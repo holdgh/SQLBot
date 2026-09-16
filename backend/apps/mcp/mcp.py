@@ -192,7 +192,7 @@ async def mcp_question(session: SessionDep, trans: Trans, chat: McpQuestion):
 
     mcp_chat = ChatMcp(token=chat.token, chat_id=chat.chat_id, question=chat.question, datasource_id=ds_id,
                        custom_model=chat.custom_model)
-
+    # in_chat参数区分是mcp工具请求还是sqlbot页面请求
     return await question_answer_inner(session=session, current_user=session_user, request_question=mcp_chat,
                                        in_chat=False, stream=chat.stream, return_img=chat.return_img)
 

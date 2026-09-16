@@ -49,7 +49,7 @@ def parse_quick_command(input_str: str) -> Tuple[Optional[QuickCommand], str, Op
         return None, input_str, None, f"错误: 命令格式不正确"
 
     command_part = match.group(1)
-    number_part = match.group(2)
+    number_part = match.group(2)  # 命令模式时，前端传参中的数字为问题内容在数据库中的id号
 
     # 4. 检查命令是否在字符串末尾
     # 计算命令的结束位置

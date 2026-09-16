@@ -145,7 +145,7 @@ class LLMFactory:
     return config """
 
 
-async def get_default_config(custom_model_id: Optional[int] = None) -> LLMConfig:
+async def get_default_config(custom_model_id: Optional[int] = None) -> LLMConfig:  # 获取相应模型配置信息。不传模型id时，选取默认模型
     with Session(engine) as session:
         db_model: AiModelDetail | None = None
         if custom_model_id:

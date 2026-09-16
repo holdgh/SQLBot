@@ -220,7 +220,7 @@ mcp = FastApiMCP(
     description="SQLBot MCP Server",
     describe_all_responses=True,
     describe_full_response_schema=True,
-    include_operations=["mcp_datasource_list", "mcp_model_list", "mcp_question", "mcp_start", "mcp_assistant", "mcp_ws_list", "access_token"],
+    include_operations=["mcp_datasource_list", "mcp_model_list", "mcp_question", "mcp_start", "mcp_assistant", "mcp_ws_list", "access_token"],  # 从其app实例路由中筛选出mcp操作
     headers=["Authorization", "X-Forwarded-For", "X-Real-IP", "CF-Connecting-IP", "X-Client-IP"]
 )
 
@@ -242,7 +242,7 @@ app.add_middleware(RequestContextMiddleware)
 app.add_middleware(RequestContextMiddlewareCommon)
 # 最后注册即最外层：非法 Host 头（携带路径片段等）在进入任何业务逻辑前被拒绝
 app.add_middleware(HostValidationMiddleware)
-app.include_router(api_router, prefix=settings.API_V1_STR)
+app.include_router(api_router, prefix=settings.API_V1_STR)  # 路由设置
 
 # Register exception handlers
 app.add_exception_handler(StarletteHTTPException, exception_handler.http_exception_handler)
@@ -254,5 +254,11 @@ sqlbot_xpack.init_fastapi_app(app)
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app",
+                host="0.0.0.0",
+                port=8000,
+                # reload=True,
+                proxy_headers=True,
+                forwarded_allow_ips="*"
+                )
     # uvicorn.run("main:mcp_app", host="0.0.0.0", port=8001) # mcp server

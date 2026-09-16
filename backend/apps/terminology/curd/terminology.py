@@ -840,7 +840,7 @@ LIMIT {settings.EMBEDDING_TERMINOLOGY_TOP_COUNT}
 
 
 def select_terminology_by_word(session: SessionDep, word: str, oid: int, datasource: int = None,
-                               advanced_application_id: Optional[int] = None):
+                               advanced_application_id: Optional[int] = None):  # 【“关键词查询”【术语word在问题中完整出现即可】和向量相似度查询】获取与用户问题相关的术语信息
     if word.strip() == "":
         return []
 
@@ -853,23 +853,23 @@ def select_terminology_by_word(session: SessionDep, word: str, oid: int, datasou
             Terminology.word,
         )
         .where(
-            and_(text(":sentence ILIKE '%' || word || '%'"), Terminology.oid == oid, Terminology.enabled == True)
+            and_(text(":sentence ILIKE '%' || word || '%'"), Terminology.oid == oid, Terminology.enabled == True)  # 用户问题包含术语word的术语
         )
-    )
+    )  # 当前条件：找出用户问题文本中包含的所有术语
 
     if advanced_application_id is not None:
         stmt = stmt.where(Terminology.advanced_application == advanced_application_id)
     elif datasource is not None:
         stmt = stmt.where(
             or_(
-                or_(Terminology.specific_ds == False, Terminology.specific_ds.is_(None)),
+                or_(Terminology.specific_ds == False, Terminology.specific_ds.is_(None)),  # 不限制数据源的术语
                 and_(
                     Terminology.specific_ds == True,
                     Terminology.datasource_ids.isnot(None),
                     text("datasource_ids @> jsonb_build_array(:datasource)")
-                )
+                )  # 属于当前数据源的术语
             )
-        )
+        )  # 当前条件：找出属于当前数据源id的术语或者不限制数据源的术语
     else:
         stmt = stmt.where(or_(Terminology.specific_ds == False, Terminology.specific_ds.is_(None)))
 
@@ -881,9 +881,9 @@ def select_terminology_by_word(session: SessionDep, word: str, oid: int, datasou
     results = session.execute(stmt, params).fetchall()
 
     for row in results:
-        _list.append(Terminology(id=row.id, word=row.word, pid=row.pid))
+        _list.append(Terminology(id=row.id, word=row.word, pid=row.pid))  # 收集关键词查询结果
 
-    if settings.EMBEDDING_ENABLED:
+    if settings.EMBEDDING_ENABLED:  # 如果embedding服务可用，则进行向量相似度查询【不同的传参，使用不同的查询模板】
         with session.begin_nested():
             try:
                 model = EmbeddingModelCache.get_model()
@@ -903,7 +903,7 @@ def select_terminology_by_word(session: SessionDep, word: str, oid: int, datasou
                                               {'embedding_array': str(embedding), 'oid': oid}).fetchall()
 
                 for row in results:
-                    _list.append(Terminology(id=row.id, word=row.word, pid=row.pid))
+                    _list.append(Terminology(id=row.id, word=row.word, pid=row.pid))  # 收集向量相似度查询结果
 
             except Exception:
                 traceback.print_exc()
@@ -911,7 +911,7 @@ def select_terminology_by_word(session: SessionDep, word: str, oid: int, datasou
 
     _map: dict = {}
     _ids: list[int] = []
-    for row in _list:
+    for row in _list:  # 去重
         if row.id in _ids or row.pid in _ids:
             continue
         if row.pid is not None:
@@ -923,8 +923,8 @@ def select_terminology_by_word(session: SessionDep, word: str, oid: int, datasou
         return []
 
     t_list = session.query(Terminology.id, Terminology.pid, Terminology.word, Terminology.description).filter(
-        or_(Terminology.id.in_(_ids), Terminology.pid.in_(_ids))).all()
-    for row in t_list:
+        or_(Terminology.id.in_(_ids), Terminology.pid.in_(_ids))).all()  # 查询术语详情列表
+    for row in t_list:  # 构造术语树
         pid = str(row.pid) if row.pid is not None else str(row.id)
         if _map.get(pid) is None:
             _map[pid] = {'words': [], 'description': ''}
@@ -974,13 +974,13 @@ def to_xml_string(_dict: list[dict] | dict, root: str = 'terminologies') -> str:
 
 def get_terminology_template(session: SessionDep, question: str, oid: Optional[int] = 1,
                              datasource: Optional[int] = None,
-                             advanced_application_id: Optional[int] = None) -> tuple[str, list[dict]]:
+                             advanced_application_id: Optional[int] = None) -> tuple[str, list[dict]]:  # 基于用户问题获取【相应工作空间的相应问数数据源的】术语信息
     if not oid:
         oid = 1
-    _results = select_terminology_by_word(session, question, oid, datasource, advanced_application_id)
+    _results = select_terminology_by_word(session, question, oid, datasource, advanced_application_id)  #  【“关键词查询”【术语word在问题中完整出现即可】和向量相似度查询】获取与用户问题相关的术语信息【术语树形式】
     if _results and len(_results) > 0:
-        terminology = to_xml_string(_results)
-        template = get_base_terminology_template().format(terminologies=terminology)
+        terminology = to_xml_string(_results)  # 将术语树转化为xml文本
+        template = get_base_terminology_template().format(terminologies=terminology)  # 基于template.yaml中的terminology配置，填充术语xml文本
         return template, _results
     else:
         return '', []

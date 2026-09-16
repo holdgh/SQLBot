@@ -50,7 +50,7 @@ def authenticate(*, session: Session, account: str, password: str) -> BaseUserDT
     return db_user
 
 
-def user_ws_list(session: Session, uid: int, trans: Optional[I18n | I18nHelper] = None) -> list[UserWs]:
+def user_ws_list(session: Session, uid: int, trans: Optional[I18n | I18nHelper] = None) -> list[UserWs]:  # 获取用户所属的工作空间列表
     if uid == 1:
         stmt = select(WorkspaceModel.id, WorkspaceModel.name).order_by(WorkspaceModel.name, WorkspaceModel.create_time)
     else:

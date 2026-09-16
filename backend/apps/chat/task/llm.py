@@ -133,14 +133,14 @@ class LLMService:
 
         self.table_name_list = []
 
-        chat_question.lang = get_lang_name(current_user.language)
+        chat_question.lang = get_lang_name(current_user.language)  # 获取用户信息中的语言设置
         self.trans = i18n(lang=current_user.language)
 
         chat_id = chat_question.chat_id
         chat: Chat | None = session.get(Chat, chat_id)
         if not chat:
             raise SingleMessageError(f"Chat with id {chat_id} not found")
-        self.oid = chat.oid
+        self.oid = chat.oid  # 工作空间id
 
         if self.oid and not current_assistant:
             w_list = user_ws_list(session, self.current_user.id)
@@ -180,16 +180,16 @@ class LLMService:
                 if not ds:
                     raise SingleMessageError("No available datasource configuration found")
                 chat_question.engine = (ds.type_name if ds.type != 'excel' else 'PostgreSQL') + get_version(ds)
-
+        # 获取当前用户聊天记录：sql日志和图表日志
         self.generate_sql_logs = list_generate_sql_logs(session=session, chart_id=chat_id)
         self.generate_chart_logs = list_generate_chart_logs(session=session, chart_id=chat_id)
 
         self.change_title = not get_chat_brief_generate(session=session, chat_id=chat_id)
 
         self.ds = (
-            ds if isinstance(ds, AssistantOutDsSchema) else CoreDatasource(**ds.model_dump())) if ds else None
+            ds if isinstance(ds, AssistantOutDsSchema) else CoreDatasource(**ds.model_dump())) if ds else None  # 问数数据源
         self.chat_question = chat_question
-        self.config = config
+        self.config = config  # 模型配置信息
         if no_reasoning:
             # only work while using qwen
             if self.config.additional_params:
@@ -202,10 +202,10 @@ class LLMService:
 
         # Create LLM instance through factory
         llm_instance = LLMFactory.create_llm(self.config)
-        self.llm = llm_instance.llm
+        self.llm = llm_instance.llm  # 大模型api客户端实例
 
         # get last_execute_sql_error
-        last_execute_sql_error = get_last_execute_sql_error(session, self.chat_question.chat_id)
+        last_execute_sql_error = get_last_execute_sql_error(session, self.chat_question.chat_id)  # 获取最近一次sql执行异常信息【若最近一次SQL执行正常，则返回none】
         if last_execute_sql_error:
             self.chat_question.error_msg = f'''<error-msg>
 {last_execute_sql_error}
@@ -347,7 +347,7 @@ class LLMService:
                     _msg = AIMessage(content=_msg_dict.get('content'))
                     self.chart_message.append(_msg)
 
-    def init_record(self, session: Session) -> ChatRecord:
+    def init_record(self, session: Session) -> ChatRecord:  # 持久化问题记录【无论问题内容是否重复，统一持久化处理】
         self.record = save_question(session=session, current_user=self.current_user, question=self.chat_question)
         return self.record
 
@@ -364,12 +364,12 @@ class LLMService:
         chart_info = get_chart_config(_session, self.record.id)
         return format_chart_fields(chart_info)
 
-    def filter_terminology_template(self, _session: Session, oid: int = None, ds_id: int = None):
+    def filter_terminology_template(self, _session: Session, oid: int = None, ds_id: int = None):  # 筛选术语
         self.current_logs[OperationEnum.FILTER_TERMS] = start_log(session=_session,
                                                                   operate=OperationEnum.FILTER_TERMS,
-                                                                  record_id=self.record.id, local_operation=True)
-        calculate_oid = oid
-        calculate_ds_id = ds_id
+                                                                  record_id=self.record.id, local_operation=True)  # 持久化术语查询日志【聊天记录明细】
+        calculate_oid = oid  # 工作空间id
+        calculate_ds_id = ds_id  # 问数数据源id
         if self.current_assistant:
             calculate_oid = self.current_assistant.oid if self.current_assistant.type != 4 else self.oid
             if self.current_assistant.type == 1:
@@ -383,14 +383,14 @@ class LLMService:
             self.chat_question.terminologies, term_list = get_terminology_template(_session,
                                                                                    self.chat_question.question,
                                                                                    calculate_oid,
-                                                                                   calculate_ds_id)
+                                                                                   calculate_ds_id)  # 获取术语文本信息【由术语树转为xml格式文本，然后填充到template.yaml的terminology模板中得到的文本】和术语树信息
 
         self.current_logs[OperationEnum.FILTER_TERMS] = end_log(session=_session,
                                                                 log=self.current_logs[OperationEnum.FILTER_TERMS],
-                                                                full_message=term_list)
+                                                                full_message=term_list)  # 将属于术语树信息也维护到查询日志【聊天记录明细】中
 
     def filter_custom_prompts(self, _session: Session, custom_prompt_type: CustomPromptTypeEnum, oid: int = None,
-                              ds_id: int = None):
+                              ds_id: int = None):  # 筛选用户自定义提示词
         if SQLBotLicenseUtil.valid():
             self.current_logs[OperationEnum.FILTER_CUSTOM_PROMPT] = start_log(session=_session,
                                                                               operate=OperationEnum.FILTER_CUSTOM_PROMPT,
@@ -417,7 +417,7 @@ class LLMService:
                                                                                 OperationEnum.FILTER_CUSTOM_PROMPT],
                                                                             full_message=prompt_list)
 
-    def filter_training_template(self, _session: Session, oid: int = None, ds_id: int = None):
+    def filter_training_template(self, _session: Session, oid: int = None, ds_id: int = None):  # 筛选SQL示例
         self.current_logs[OperationEnum.FILTER_SQL_EXAMPLE] = start_log(session=_session,
                                                                         operate=OperationEnum.FILTER_SQL_EXAMPLE,
                                                                         record_id=self.record.id,
@@ -1223,7 +1223,7 @@ class LLMService:
             yield chunk
 
     def run_task_async(self, in_chat: bool = True, stream: bool = True,
-                       finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART, return_img: bool = True):
+                       finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART, return_img: bool = True):  # 处理问数任务
         if in_chat:
             stream = True
         self.future = executor.submit(self.run_task_cache, in_chat, stream, finish_step, return_img)
@@ -1234,20 +1234,20 @@ class LLMService:
             self.chunk_list.append(chunk)
 
     def run_task(self, in_chat: bool = True, stream: bool = True,
-                 finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART, return_img: bool = True):
+                 finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART, return_img: bool = True):  # 问数任务核心处理逻辑
         json_result: Dict[str, Any] = {'success': True}
         _session = None
         try:
-            _session = session_maker()
-            if self.ds:
-                oid = self.ds.oid if isinstance(self.ds, CoreDatasource) else 1
-                ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
+            _session = session_maker()  # sqlbot数据库连接会话实例
+            if self.ds:  # 问数数据源
+                oid = self.ds.oid if isinstance(self.ds, CoreDatasource) else 1  # 工作空间id
+                ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None  # 问数数据源id
 
-                self.filter_terminology_template(_session, oid, ds_id)
+                self.filter_terminology_template(_session, oid, ds_id)  # 筛选术语
 
-                self.filter_training_template(_session, oid, ds_id)
+                self.filter_training_template(_session, oid, ds_id)  # 筛选SQL示例 TODO 至此~
 
-                self.filter_custom_prompts(_session, CustomPromptTypeEnum.GENERATE_SQL, oid, ds_id)
+                self.filter_custom_prompts(_session, CustomPromptTypeEnum.GENERATE_SQL, oid, ds_id)  # 筛选用户自定义提示词
 
                 self.init_messages(_session)
 

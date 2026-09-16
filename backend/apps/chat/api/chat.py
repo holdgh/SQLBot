@@ -299,7 +299,7 @@ async def question_answer_inner(session: SessionDep, current_user: CurrentUser, 
                 rec_id, rec_chat_id, rec_regenerate_record_id = _record
 
             # 没有指定的，就查询上一个
-            if not rec_regenerate_record_id:
+            if not rec_regenerate_record_id:  # 没有关联的重新生成记录
                 rec_regenerate_record_id = rec_id
 
             # 针对已经是重新生成的提问，需要找到原来的提问是什么
@@ -321,7 +321,7 @@ async def question_answer_inner(session: SessionDep, current_user: CurrentUser, 
                                                  stream)
             else:
                 raise Exception(f'Unknown command: {command.value}')
-        else:
+        else:  # 非命令模式，直接处理
             return await stream_sql(session, current_user, request_question, current_assistant, in_chat, stream,
                                     finish_step, embedding, return_img)
     except Exception as e:
@@ -346,12 +346,12 @@ async def question_answer_inner(session: SessionDep, current_user: CurrentUser, 
 async def stream_sql(session: SessionDep, current_user: CurrentUser, request_question: ChatQuestion,
                      current_assistant: Optional[CurrentAssistant] = None, in_chat: bool = True, stream: bool = True,
                      finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART, embedding: bool = False,
-                     return_img: bool = True):
+                     return_img: bool = True):  # 问数处理逻辑
     try:
         llm_service = await LLMService.create(session, current_user, request_question, current_assistant,
-                                              embedding=embedding)
-        llm_service.init_record(session=session)
-        llm_service.run_task_async(in_chat=in_chat, stream=stream, finish_step=finish_step, return_img=return_img)
+                                              embedding=embedding)  # 创建大模型处理问数问题服务实例【内部维护了：大模型实例、数据源、会话历史、当前用户问题及语言设置等信息】
+        llm_service.init_record(session=session)  # 持久化问题记录【无论问题内容是否重复，统一持久化处理】【无论是sqlbot页面操作还是mcp工具调用，问题记录都会被持久化】
+        llm_service.run_task_async(in_chat=in_chat, stream=stream, finish_step=finish_step, return_img=return_img)  # 处理问数任务
     except Exception as e:
         traceback.print_exc()
 

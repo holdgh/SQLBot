@@ -192,7 +192,7 @@ def format_chart_fields(chart_info: dict) -> list:
     return [field for field in fields if field]  # 过滤空字符串
 
 
-def get_last_execute_sql_error(session: SessionDep, chart_id: int):
+def get_last_execute_sql_error(session: SessionDep, chart_id: int):  # 获取最近一次sql执行异常信息【若最近一次SQL执行正常，则返回none】
     stmt = select(ChatRecord.error).where(and_(ChatRecord.chat_id == chart_id)).order_by(
         ChatRecord.create_time.desc()).limit(1)
     res = session.execute(stmt).scalar()
@@ -806,7 +806,7 @@ def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj:
     return chat_info
 
 
-def save_question(session: SessionDep, current_user: CurrentUser, question: ChatQuestion) -> ChatRecord:
+def save_question(session: SessionDep, current_user: CurrentUser, question: ChatQuestion) -> ChatRecord:  # 持久化问题记录【无论问题内容是否重复，统一持久化处理】
     if not question.chat_id:
         raise Exception("ChatId cannot be None")
     if not question.question or question.question.strip() == '':
@@ -868,7 +868,7 @@ def save_analysis_predict_record(session: SessionDep, base_record: ChatRecord, a
 
 def start_log(session: SessionDep, ai_modal_id: int = None, ai_modal_name: str = None, operate: OperationEnum = None,
               record_id: int = None, full_message: Union[list[dict], dict] = None,
-              local_operation: bool = False) -> ChatLog:
+              local_operation: bool = False) -> ChatLog:  # 持久化聊天记录明细【一条chatRecord对应多条chatLog】
     log = ChatLog(type=TypeEnum.CHAT, operate=operate, pid=record_id, ai_modal_id=ai_modal_id, base_modal=ai_modal_name,
                   messages=full_message, start_time=datetime.datetime.now(), local_operation=local_operation)
 
