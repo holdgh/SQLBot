@@ -411,39 +411,39 @@ def updateNum(session: SessionDep, ds: CoreDatasource):
     session.commit()
 
 
-def get_table_obj_by_ds(session: SessionDep, current_user: CurrentUser, ds: CoreDatasource) -> List[TableAndFields]:
+def get_table_obj_by_ds(session: SessionDep, current_user: CurrentUser, ds: CoreDatasource) -> List[TableAndFields]:  # 获取已授权当前用户的问数数据源表结构信息列表
     _list: List = []
     tables = session.query(CoreTable).filter(
         and_(CoreTable.ds_id == ds.id, CoreTable.checked == True)
-    ).all()
-    conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
-    schema = conf.dbSchema if conf.dbSchema is not None and conf.dbSchema != "" else conf.database
+    ).all()  # 查询相应问数数据源的所有表结构信息
+    conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()  # 解密获取问数数据源连接信息【IP、端口、用户名密码及数据库名等】
+    schema = conf.dbSchema if conf.dbSchema is not None and conf.dbSchema != "" else conf.database  # 获取问数数据源模式【对于MySQL数据库，没有独立 schema 概念，`schema ≈ database`；对于SQL Server 和 postgres，schema是库内命名空间，用来组织、隔离一组表、视图、函数、存储过程等对象】
 
     # get all field
     table_ids = [table.id for table in tables]
     all_fields = session.query(CoreField).filter(
-        and_(CoreField.table_id.in_(table_ids), CoreField.checked == True)).all()
+        and_(CoreField.table_id.in_(table_ids), CoreField.checked == True)).all()  # 查询相应问数数据表的字段信息
     # build dict
     fields_dict = {}
-    for field in all_fields:
+    for field in all_fields:  # 按照数据表划分字段【梳理表名和字段之间的对应关系】
         if fields_dict.get(field.table_id):
             fields_dict.get(field.table_id).append(field)
         else:
             fields_dict[field.table_id] = [field]
 
-    contain_rules = session.query(DsRules).all()
+    contain_rules = session.query(DsRules).all()  # 查询所有数据源规则 TODO 这里实际上没用到，请看apps.datasource.crud.permission.get_column_permission_fields
     for table in tables:
         # fields = session.query(CoreField).filter(and_(CoreField.table_id == table.id, CoreField.checked == True)).all()
         fields = fields_dict.get(table.id)
 
         # do column permissions, filter fields
         fields = get_column_permission_fields(session=session, current_user=current_user, table=table, fields=fields,
-                                              contain_rules=contain_rules)
-        _list.append(TableAndFields(schema=schema, table=table, fields=fields))
+                                              contain_rules=contain_rules)  # 获取已授权当前用户的问数数据源表字段信息列表
+        _list.append(TableAndFields(schema=schema, table=table, fields=fields))  # 收集表结构信息【问数数据源数据模式【MySQL为数据库名】、表信息、表字段信息列表】
     return _list
 
 
-def get_table_sample_data(ds: CoreDatasource, table_name: str, fields: list) -> str:
+def get_table_sample_data(ds: CoreDatasource, table_name: str, fields: list) -> str:  # 获取问数数据源的特定数据表的样例数据文本【由三条以内的样例数据记录组成的json列表字符串】
     """Get 3 sample rows from a table in JSON format to help AI understand the data"""
     if not fields:
         return ""
@@ -499,9 +499,9 @@ def get_table_sample_data(ds: CoreDatasource, table_name: str, fields: list) -> 
 
 
 def get_tables_sample_data(session: SessionDep, current_user: CurrentUser, ds: CoreDatasource,
-                           table_list: list[str] = None) -> str:
+                           table_list: list[str] = None) -> str:  # 获取问数数据源的特定数据表列表的样例数据文本
     """Get sample data (3 rows) for all tables to help AI understand the data"""
-    table_objs = get_table_obj_by_ds(session=session, current_user=current_user, ds=ds)
+    table_objs = get_table_obj_by_ds(session=session, current_user=current_user, ds=ds)  # 获取已授权当前用户的问数数据源表结构信息列表
     if len(table_objs) == 0:
         return ""
 
@@ -510,19 +510,19 @@ def get_tables_sample_data(session: SessionDep, current_user: CurrentUser, ds: C
         if table_list is not None and obj.table.table_name not in table_list:
             continue
         if obj.fields:
-            sample = get_table_sample_data(ds, obj.table.table_name, obj.fields)
+            sample = get_table_sample_data(ds, obj.table.table_name, obj.fields)  # 获取问数数据源的特定数据表的样例数据文本【由三条以内的样例数据记录组成的json列表字符串】
             if sample:
                 sample_data_parts.append(f"# Table: {obj.table.table_name}\n{sample}")
     return "\n".join(sample_data_parts)
 
 
 def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDatasource, question: str,
-                     embedding: bool = True, table_list: list[str] = None) -> tuple[str, list]:
+                     embedding: bool = True, table_list: list[str] = None) -> tuple[str, list]:  # 获取问数数据源且已授权当前用户的表结构信息文本【如果存在表关系，一并体现】和表名列表
     schema_str = ""
-    table_objs = get_table_obj_by_ds(session=session, current_user=current_user, ds=ds)
+    table_objs = get_table_obj_by_ds(session=session, current_user=current_user, ds=ds)  # 获取已授权当前用户的问数数据源表结构信息列表
     if len(table_objs) == 0:
         return schema_str, []
-    db_name = table_objs[0].schema
+    db_name = table_objs[0].schema  # 问数数据源模式名称【MySQL时为数据库名、postgres为数据模式名【数据库下的命名空间】】
     schema_str += f"【DB_ID】 {db_name}\n【Schema】\n"
     tables = []
     all_tables = []  # temp save all tables
@@ -536,7 +536,7 @@ def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDat
         no_schema_types = ["mysql", "es", "sqlite", "hive", "doris", "starrocks"]
         schema_table += f"# Table: {db_name}.{obj.table.table_name}" if ds.type not in no_schema_types and db_name else f"# Table: {obj.table.table_name}"
         table_comment = ''
-        if obj.table.custom_comment:
+        if obj.table.custom_comment:  # 表注释
             table_comment = obj.table.custom_comment.strip()
         if table_comment == '':
             schema_table += '\n[\n'
@@ -545,7 +545,7 @@ def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDat
 
         if obj.fields:
             field_list = []
-            for field in obj.fields:
+            for field in obj.fields:  # 格式化收集相应表的字段信息列表
                 field_comment = ''
                 if field.custom_comment:
                     field_comment = field.custom_comment.strip()
@@ -554,10 +554,10 @@ def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDat
                 else:
                     field_list.append(f"({field.field_name}:{field.field_type}, {field_comment})")
             schema_table += ",\n".join(field_list)
-        schema_table += '\n]\n'
+        schema_table += '\n]\n'  # 格式化构造表结构文本
 
         t_obj = {"id": obj.table.id, "table_name": obj.table.table_name, "schema_table": schema_table,
-                 "embedding": obj.table.embedding}
+                 "embedding": obj.table.embedding}  # 封装表结构信息
         tables.append(t_obj)
         all_tables.append(t_obj)
 
@@ -567,15 +567,15 @@ def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDat
 
     # do table embedding
     if embedding and tables and settings.TABLE_EMBEDDING_ENABLED:
-        tables = calc_table_embedding(tables, question)
+        tables = calc_table_embedding(tables, question)  # 基于向量余弦相似度筛选出top_k个与用户问题相关的表结构信息
     # splice schema
     if tables:
         for s in tables:
-            schema_str += s.get('schema_table')
+            schema_str += s.get('schema_table')  # 拼接表结构信息文本
             table_name_list.append(s.get('table_name'))
 
     # field relation
-    if tables and ds.table_relation:
+    if tables and ds.table_relation:  # 表关系处理
         relations = list(filter(lambda x: x.get('shape') == 'edge', ds.table_relation))
         if relations:
             # Complete the missing table
@@ -622,7 +622,7 @@ def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDat
                 for ele in all_relations:
                     schema_str += f"{table_dict.get(int(ele.get('source').get('cell')))}.{field_dict.get(int(ele.get('source').get('port')))}={table_dict.get(int(ele.get('target').get('cell')))}.{field_dict.get(int(ele.get('target').get('port')))}\n"
 
-    return schema_str, table_name_list
+    return schema_str, table_name_list  # 返回问数数据源且已授权当前用户的表结构信息文本【如果存在表关系，一并体现】和表名列表
 
 
 @cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.DS_ID_LIST, keyExpression="oid")

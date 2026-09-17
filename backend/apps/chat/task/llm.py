@@ -181,8 +181,8 @@ class LLMService:
                     raise SingleMessageError("No available datasource configuration found")
                 chat_question.engine = (ds.type_name if ds.type != 'excel' else 'PostgreSQL') + get_version(ds)
         # 获取当前用户聊天记录：sql日志和图表日志
-        self.generate_sql_logs = list_generate_sql_logs(session=session, chart_id=chat_id)
-        self.generate_chart_logs = list_generate_chart_logs(session=session, chart_id=chat_id)
+        self.generate_sql_logs = list_generate_sql_logs(session=session, chart_id=chat_id)  # 当前会话的所有SQL生成日志
+        self.generate_chart_logs = list_generate_chart_logs(session=session, chart_id=chat_id)  # 查询当前会话的所有图表生成日志
 
         self.change_title = not get_chat_brief_generate(session=session, chat_id=chat_id)
 
@@ -269,33 +269,33 @@ class LLMService:
 
     def init_messages(self, session: Session):
 
-        self.table_name_list = self.choose_table_schema(session)
+        self.table_name_list = self.choose_table_schema(session)  # 获取当前问数数据源的且已授权当前用户的表结构信息及样例数据，仅返回数据表名列表【表结构信息及样例数据已通过属性赋值于当前llmService实例】
 
         last_sql_messages: List[dict[str, Any]] = self.generate_sql_logs[-1].messages if len(
-            self.generate_sql_logs) > 0 else []
-        if self.chat_question.regenerate_record_id:
+            self.generate_sql_logs) > 0 else []  # 取当前会话的最近一条SQL生成日志上下文明细
+        if self.chat_question.regenerate_record_id:  # 如果是重新生成场景，则获取相应问题的SQL生成日志上下文明细【也即获取同一问题的最近一条SQL生成日志上下文明细】
             # filter record before regenerate_record_id
             _temp_log = next(
                 filter(lambda obj: obj.pid == self.chat_question.regenerate_record_id, self.generate_sql_logs), None)
             last_sql_messages: List[dict[str, Any]] = _temp_log.messages if _temp_log else []
 
-        # 排除所有的系统提示词
+        # 排除所有的系统构造的提示词【通过查看SQL生成日志上下文明细，结合下述代码可知：sqlbot会构造一系列的上下文，这些构造的上下文特点就是其sqlbot_system采用默认值true】
         last_sql_messages = [obj for obj in last_sql_messages if obj.get("sqlbot_system") != True]
 
         count_limit = self.base_message_round_count_limit
 
-        self.sql_message = []
+        self.sql_message = []  # 初始化当前SQL生成上下文明细
         # add sys prompt
-        _system_templates = self.chat_question.sql_sys_question(self.ds.type, self.enable_sql_row_limit)
-        self.sql_message.append(SystemPromptMessage(content=_system_templates['system']))
-        self.sql_message.append(HumanPromptMessage(content=_system_templates['rules']))
+        _system_templates = self.chat_question.sql_sys_question(self.ds.type, self.enable_sql_row_limit)  # 获取SQL生成系统提示词模板
+        self.sql_message.append(SystemPromptMessage(content=_system_templates['system']))  # 设置系统提示词
+        self.sql_message.append(HumanPromptMessage(content=_system_templates['rules']))  # 构造用户消息：阐述规则
         self.sql_message.append(
-            AIPromptMessage(content='我已掌握所有规则，包括表结构、SQL规范、安全限制和输出格式，我会严格遵守这些规则。'))
-        self.sql_message.append(HumanPromptMessage(content=_system_templates['schema']))
+            AIPromptMessage(content='我已掌握所有规则，包括表结构、SQL规范、安全限制和输出格式，我会严格遵守这些规则。'))  # 构造ai消息：表示已知悉和遵守规则
+        self.sql_message.append(HumanPromptMessage(content=_system_templates['schema']))  # 构造用户消息：提供表结构信息
         self.sql_message.append(
-            AIPromptMessage(content='我已确认您提供的数据库信息与表结构schema，我生成的SQL不会超出您提供的范围。'))
-        if _system_templates.get('custom_prompt'):
-            self.sql_message.append(HumanPromptMessage(content=_system_templates['custom_prompt']))
+            AIPromptMessage(content='我已确认您提供的数据库信息与表结构schema，我生成的SQL不会超出您提供的范围。'))  # 构造ai消息：表示已知悉表结构信息
+        if _system_templates.get('custom_prompt'):  # 如果存在自定义提示词 TODO 至此~
+            self.sql_message.append(HumanPromptMessage(content=_system_templates['custom_prompt']))  # 构造用户消息：阐述自定义提示词【与业务场景强相关的信息】
             self.sql_message.append(AIPromptMessage(content='我已确认您提供的额外信息，我会进行参考。'))
         if _system_templates.get('terminologies'):
             self.sql_message.append(HumanPromptMessage(content=_system_templates['terminologies']))
@@ -367,7 +367,7 @@ class LLMService:
     def filter_terminology_template(self, _session: Session, oid: int = None, ds_id: int = None):  # 筛选术语
         self.current_logs[OperationEnum.FILTER_TERMS] = start_log(session=_session,
                                                                   operate=OperationEnum.FILTER_TERMS,
-                                                                  record_id=self.record.id, local_operation=True)  # 持久化术语查询日志【聊天记录明细】
+                                                                  record_id=self.record.id, local_operation=True)  # 持久化术语查询日志【聊天记录明细】并将该日志收集到当前llmService实例的current_logs属性中
         calculate_oid = oid  # 工作空间id
         calculate_ds_id = ds_id  # 问数数据源id
         if self.current_assistant:
@@ -383,15 +383,15 @@ class LLMService:
             self.chat_question.terminologies, term_list = get_terminology_template(_session,
                                                                                    self.chat_question.question,
                                                                                    calculate_oid,
-                                                                                   calculate_ds_id)  # 获取术语文本信息【由术语树转为xml格式文本，然后填充到template.yaml的terminology模板中得到的文本】和术语树信息
+                                                                                   calculate_ds_id)  # 获取与用户问题相关的术语文本信息【由术语树转为xml格式文本，然后填充到template.yaml的terminology模板中得到的文本】和术语树信息
 
         self.current_logs[OperationEnum.FILTER_TERMS] = end_log(session=_session,
                                                                 log=self.current_logs[OperationEnum.FILTER_TERMS],
-                                                                full_message=term_list)  # 将属于术语树信息也维护到查询日志【聊天记录明细】中
+                                                                full_message=term_list)  # 将与当前用户问题相关的术语树信息也维护到查询日志【聊天记录明细】中，并将该日志收集到当前llmService实例的current_logs属性中【便于后续填充prompt】
 
     def filter_custom_prompts(self, _session: Session, custom_prompt_type: CustomPromptTypeEnum, oid: int = None,
                               ds_id: int = None):  # 筛选用户自定义提示词
-        if SQLBotLicenseUtil.valid():
+        if SQLBotLicenseUtil.valid():  # 社区版这里是false，由闭源扩展包sqlbot-xpack提供并受许可证控制。仅商业版支持该功能。
             self.current_logs[OperationEnum.FILTER_CUSTOM_PROMPT] = start_log(session=_session,
                                                                               operate=OperationEnum.FILTER_CUSTOM_PROMPT,
                                                                               record_id=self.record.id,
@@ -421,9 +421,9 @@ class LLMService:
         self.current_logs[OperationEnum.FILTER_SQL_EXAMPLE] = start_log(session=_session,
                                                                         operate=OperationEnum.FILTER_SQL_EXAMPLE,
                                                                         record_id=self.record.id,
-                                                                        local_operation=True)
-        calculate_oid = oid
-        calculate_ds_id = ds_id
+                                                                        local_operation=True)  # 与筛选术语类似，先持久化SQL示例查询日志，并将该日志收集到当前llmService实例的current_logs中
+        calculate_oid = oid  # 工作空间id
+        calculate_ds_id = ds_id  # 问数数据源id
         if self.current_assistant:
             calculate_oid = self.current_assistant.oid if self.current_assistant.type != 4 else self.oid
             if self.current_assistant.type == 1:
@@ -437,23 +437,23 @@ class LLMService:
             self.chat_question.data_training, example_list = get_training_template(_session,
                                                                                    self.chat_question.question,
                                                                                    calculate_oid,
-                                                                                   calculate_ds_id)
+                                                                                   calculate_ds_id)  # 获取与用户问题相关的SQL示例文本信息【由SQL示例列表转为xml格式文本，然后填充到template.yaml的data_training模板中得到的文本】和SQL示例列表
         self.current_logs[OperationEnum.FILTER_SQL_EXAMPLE] = end_log(session=_session,
                                                                       log=self.current_logs[
                                                                           OperationEnum.FILTER_SQL_EXAMPLE],
-                                                                      full_message=example_list)
+                                                                      full_message=example_list)  # 将与当前用户问题相关的SQL示例列表也维护到查询日志【聊天记录明细】中，并将该日志收集到当前llmService实例的current_logs属性中【便于后续填充prompt】
 
-    def choose_table_schema(self, _session: Session):
+    def choose_table_schema(self, _session: Session):  # 获取当前问数数据源的且已授权当前用户的表结构信息及样例数据，仅返回数据表名列表【表结构信息及样例数据已通过属性赋值于当前llmService实例】
         self.current_logs[OperationEnum.CHOOSE_TABLE] = start_log(session=_session,
                                                                   operate=OperationEnum.CHOOSE_TABLE,
                                                                   record_id=self.record.id,
-                                                                  local_operation=True)
+                                                                  local_operation=True)  # 持久化问数数据源表结构查询日志并收集到当前实例
         self.chat_question.db_schema, tables = self.out_ds_instance.get_db_schema(
             self.ds.id, self.chat_question.question) if self.out_ds_instance else get_table_schema(
             session=_session,
             current_user=self.current_user,
             ds=self.ds,
-            question=self.chat_question.question)
+            question=self.chat_question.question)  # 获取当前问数数据源的且已授权当前用户的表结构信息文本【表名、字段名及字段类型】和数据表表名列表
 
         # Get sample data for all tables
         if not self.out_ds_instance:
@@ -461,12 +461,12 @@ class LLMService:
                 session=_session,
                 current_user=self.current_user,
                 ds=self.ds,
-                table_list=tables)
+                table_list=tables)  # 获取问数数据源的且已授权当前用户的特定数据表列表的样例数据文本
 
         self.current_logs[OperationEnum.CHOOSE_TABLE] = end_log(session=_session,
                                                                 log=self.current_logs[OperationEnum.CHOOSE_TABLE],
-                                                                full_message=self.chat_question.db_schema)
-        return tables
+                                                                full_message=self.chat_question.db_schema)  # 持久化问数数据源表结构查询结果日志并收集到当前实例
+        return tables  # 仅返回数据表名列表【表结构信息及样例数据已通过属性赋值于当前llmService实例】
 
     def generate_analysis(self, _session: Session):
         fields = self.get_fields_from_chart(_session)
@@ -1243,11 +1243,11 @@ class LLMService:
                 oid = self.ds.oid if isinstance(self.ds, CoreDatasource) else 1  # 工作空间id
                 ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None  # 问数数据源id
 
-                self.filter_terminology_template(_session, oid, ds_id)  # 筛选术语
+                self.filter_terminology_template(_session, oid, ds_id)  # 筛选与用户问题相关的术语
 
-                self.filter_training_template(_session, oid, ds_id)  # 筛选SQL示例 TODO 至此~
+                self.filter_training_template(_session, oid, ds_id)  # 筛选与用户问题相关的SQL示例
 
-                self.filter_custom_prompts(_session, CustomPromptTypeEnum.GENERATE_SQL, oid, ds_id)  # 筛选用户自定义提示词
+                self.filter_custom_prompts(_session, CustomPromptTypeEnum.GENERATE_SQL, oid, ds_id)  # 筛选用户自定义提示词【社区版不具备该功能】
 
                 self.init_messages(_session)
 

@@ -56,19 +56,19 @@ def get_row_permission_filters(session: SessionDep, current_user: CurrentUser, d
 
 
 def get_column_permission_fields(session: SessionDep, current_user: CurrentUser, table: CoreTable,
-                                 fields: list[CoreField], contain_rules: list[DsRules]):
+                                 fields: list[CoreField], contain_rules: list[DsRules]):  # 获取已授权当前用户的问数数据源表字段信息列表，TODO 数据源规则列表白传了
     if is_normal_user(current_user):
         column_permissions = session.query(DsPermission).filter(
-            and_(DsPermission.table_id == table.id, DsPermission.type == 'column')).all()
+            and_(DsPermission.table_id == table.id, DsPermission.type == 'column')).all()  # 查询相应问数数据源表的权限信息
         if column_permissions is not None:
             for permission in column_permissions:
                 # check permission and user in same rules
                 obj = session.query(DsRules).filter(
                     and_(DsRules.permission_list.op('@>')(cast([permission.id], JSONB)),
                          or_(DsRules.user_list.op('@>')(cast([f'{current_user.id}'], JSONB)),
-                             DsRules.user_list.op('@>')(cast([current_user.id], JSONB))))
-                ).first()
-                if obj is not None:
+                             DsRules.user_list.op('@>')(cast([current_user.id], JSONB))))  # **要么包含字符串类型的当前用户 ID，要么包含数字类型的当前用户 ID**（兼容两种存储格式，处理 ID 存数字 / 字符串两种情况）。
+                ).first()  # 查询与相应权限和当前用户匹配的数据源规则
+                if obj is not None:  # 基于规则筛选已授权当前用户的问数数据源表字段信息列表
                     permission_list = json.loads(permission.permissions)
                     fields = filter_list(fields, permission_list)
 

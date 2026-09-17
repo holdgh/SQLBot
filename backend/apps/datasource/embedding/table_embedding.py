@@ -40,7 +40,7 @@ def get_table_embedding(tables: list[dict], question: str):
     return _list
 
 
-def calc_table_embedding(tables: list[dict], question: str):
+def calc_table_embedding(tables: list[dict], question: str):  # 基于向量余弦相似度筛选出top_k个与用户问题相关的表结构信息
     _list = []
     for table in tables:
         _list.append(
@@ -65,7 +65,7 @@ def calc_table_embedding(tables: list[dict], question: str):
                     _list[index]['cosine_similarity'] = cosine_similarity(q_embedding, json.loads(item))
 
             _list.sort(key=lambda x: x['cosine_similarity'], reverse=True)
-            _list = _list[:settings.TABLE_EMBEDDING_COUNT]
+            _list = _list[:settings.TABLE_EMBEDDING_COUNT]  # 筛选出top_k个
             # print(len(_list))
             end_time = time.time()
             SQLBotLogUtil.info(str(end_time - start_time))

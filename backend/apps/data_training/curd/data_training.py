@@ -519,7 +519,7 @@ LIMIT {settings.EMBEDDING_DATA_TRAINING_TOP_COUNT}
 
 
 def select_training_by_question(session: SessionDep, question: str, oid: int, datasource: Optional[int] = None,
-                                advanced_application_id: Optional[int] = None):
+                                advanced_application_id: Optional[int] = None):  # 基于“关键词检索”和向量相似度检索获取与用户问题相关的SQL示例列表
     if question.strip() == "":
         return []
 
@@ -534,21 +534,21 @@ def select_training_by_question(session: SessionDep, question: str, oid: int, da
         .where(
             and_(or_(text(":sentence ILIKE '%' || question || '%'"), text("question ILIKE '%' || :sentence || '%'")),
                  DataTraining.oid == oid,
-                 DataTraining.enabled == True)
+                 DataTraining.enabled == True)  # 用户问题包含SQL示例问题或者SQL示例问题包含用户问题，TODO 这种关键词检索机制过于简陋
         )
     )
-    if advanced_application_id is not None:
+    if advanced_application_id is not None:  # 采用高级应用id过滤
         stmt = stmt.where(and_(DataTraining.advanced_application == advanced_application_id))
-    else:
+    else:  # 采用问数数据源id过滤
         stmt = stmt.where(and_(DataTraining.datasource == datasource))
 
     results = session.execute(stmt, {'sentence': question}).fetchall()
 
-    for row in results:
+    for row in results:  # 收集关键词检索结果
         _list.append(DataTraining(id=row.id, question=row.question))
 
     if settings.EMBEDDING_ENABLED:
-        with session.begin_nested():
+        with session.begin_nested():  # 向量相似度检索
             try:
                 model = EmbeddingModelCache.get_model()
 
@@ -560,9 +560,9 @@ def select_training_by_question(session: SessionDep, question: str, oid: int, da
                                                'advanced_application': advanced_application_id})
                 else:
                     results = session.execute(text(embedding_sql),
-                                              {'embedding_array': str(embedding), 'oid': oid, 'datasource': datasource})
+                                              {'embedding_array': str(embedding), 'oid': oid, 'datasource': datasource})  # 过滤问数数据源id和工作空间id
 
-                for row in results:
+                for row in results:  # 收集向量相似度检索结果
                     _list.append(DataTraining(id=row.id, question=row.question))
 
             except Exception:
@@ -571,7 +571,7 @@ def select_training_by_question(session: SessionDep, question: str, oid: int, da
 
     _map: dict = {}
     _ids: list[int] = []
-    for row in _list:
+    for row in _list:  # 去重
         if row.id in _ids:
             continue
         else:
@@ -581,7 +581,7 @@ def select_training_by_question(session: SessionDep, question: str, oid: int, da
         return []
 
     t_list = session.query(DataTraining.id, DataTraining.question, DataTraining.description).filter(
-        and_(DataTraining.id.in_(_ids))).all()
+        and_(DataTraining.id.in_(_ids))).all()  # 查询SQL示例详情列表
 
     for row in t_list:
         _map[row.id] = {'question': row.question, 'suggestion-answer': row.description}
@@ -590,7 +590,7 @@ def select_training_by_question(session: SessionDep, question: str, oid: int, da
     for key in _map.keys():
         _results.append(_map.get(key))
 
-    return _results
+    return _results  # 返回与用户问题相关的SQL示例列表
 
 
 def to_xml_string(_dict: list[dict] | dict, root: str = 'sql-examples') -> str:
@@ -617,15 +617,15 @@ def to_xml_string(_dict: list[dict] | dict, root: str = 'sql-examples') -> str:
 
 
 def get_training_template(session: SessionDep, question: str, oid: Optional[int] = 1, datasource: Optional[int] = None,
-                          advanced_application_id: Optional[int] = None) -> tuple[str, list[dict]]:
+                          advanced_application_id: Optional[int] = None) -> tuple[str, list[dict]]:  # 获取【相应工作空间的相应问数数据源的】与用户问题相关的SQL示例信息
     if not oid:
         oid = 1
     if not datasource and not advanced_application_id:
         return '', []
-    _results = select_training_by_question(session, question, oid, datasource, advanced_application_id)
+    _results = select_training_by_question(session, question, oid, datasource, advanced_application_id)  # 基于“关键词检索”和向量相似度检索获取与用户问题相关的SQL示例列表
     if _results and len(_results) > 0:
-        data_training = to_xml_string(_results)
-        template = get_base_data_training_template().format(data_training=data_training)
+        data_training = to_xml_string(_results)  # 将SQL示例列表转化为xml文本
+        template = get_base_data_training_template().format(data_training=data_training)  # 基于template.yaml中的data_training配置，填充术语xml文本
         return template, _results
     else:
         return '', []

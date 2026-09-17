@@ -3,7 +3,7 @@
 import math
 
 
-def cosine_similarity(vec_a, vec_b):
+def cosine_similarity(vec_a, vec_b):  # 计算两个语义向量之间的余弦相似度
     if len(vec_a) != len(vec_b):
         raise ValueError("The vector dimension must be the same")
 

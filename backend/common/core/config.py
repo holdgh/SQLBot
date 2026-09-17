@@ -99,10 +99,12 @@ class Settings(BaseSettings):
     SERVER_IMAGE_HOST: str = 'http://YOUR_SERVE_IP:MCP_PORT/images/'
     SERVER_IMAGE_TIMEOUT: int = 15
 
-    LOCAL_MODEL_PATH: str = '/opt/sqlbot/models'
-    DEFAULT_EMBEDDING_MODEL: str = 'shibing624/text2vec-base-chinese'
+    # LOCAL_MODEL_PATH: str = '/opt/sqlbot/models'
+    # DEFAULT_EMBEDDING_MODEL: str = 'shibing624/text2vec-base-chinese'
+    LOCAL_MODEL_PATH: str = r'C:\Users\gaohu\aiModel'
+    DEFAULT_EMBEDDING_MODEL: str = 'text2vec-base-chinese'
     EMBEDDING_ENABLED: bool = True
-    EMBEDDING_DEFAULT_SIMILARITY: float = 0.4
+    EMBEDDING_DEFAULT_SIMILARITY: float = 0.4  # 向量相似度检索阈值
     EMBEDDING_TERMINOLOGY_SIMILARITY: float = EMBEDDING_DEFAULT_SIMILARITY
     EMBEDDING_DATA_TRAINING_SIMILARITY: float = EMBEDDING_DEFAULT_SIMILARITY
     EMBEDDING_DEFAULT_TOP_COUNT: int = 5

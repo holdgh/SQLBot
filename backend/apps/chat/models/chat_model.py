@@ -255,12 +255,12 @@ class AiModelQuestion(BaseModel):
     sample_data: str = ""
     sqlbot_name: str = "SQLBot"
 
-    def sql_sys_question(self, db_type: Union[str, DB], enable_query_limit: bool = True):
+    def sql_sys_question(self, db_type: Union[str, DB], enable_query_limit: bool = True):  # 获取SQL生成系统提示词模板
         templates: dict[str, str] = {}
-        _sql_template = get_sql_example_template(db_type)
-        _base_template = get_sql_template()
+        _sql_template = get_sql_example_template(db_type)  # 获取相应问数数据源类型的SQL模板
+        _base_template = get_sql_template()  # 获取基础SQL模板
         _process_check = _sql_template.get('process_check') if _sql_template.get('process_check') else _base_template[
-            'process_check']
+            'process_check']  # 优先取相应问数数据源类型的SQL模板中的process_check
         _query_limit = _base_template['query_limit'] if enable_query_limit else _base_template['no_query_limit']
         _other_rule = _sql_template['other_rule'].format(multi_table_condition=_base_template['multi_table_condition'])
         _base_sql_rules = _sql_template['quot_rule'] + _query_limit + _sql_template['limit_rule'] + _other_rule
@@ -288,15 +288,15 @@ class AiModelQuestion(BaseModel):
 
         if self.terminologies:
             templates['terminologies'] = _base_template['generate_terminologies_info'].format(
-                terminologies=self.terminologies)
+                terminologies=self.terminologies)  # 格式化填充与用户问题相关的术语
 
         if self.data_training:
             templates['data_training'] = _base_template['generate_data_training_info'].format(
-                data_training=self.data_training)
+                data_training=self.data_training)  # 格式化填充与用户问题相关的SQL示例
 
         if self.custom_prompt:
             templates['custom_prompt'] = _base_template['generate_custom_prompt_info'].format(
-                custom_prompt=self.custom_prompt)
+                custom_prompt=self.custom_prompt)  # 格式化填充与用户问题相关的自定义提示词
 
         return templates
 

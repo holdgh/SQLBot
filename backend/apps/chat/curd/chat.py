@@ -709,7 +709,7 @@ def list_generate_sql_logs(session: SessionDep, chart_id: int) -> List[ChatLog]:
     stmt = select(ChatLog).where(
         and_(ChatLog.pid.in_(select(ChatRecord.id).where(and_(ChatRecord.chat_id == chart_id))),
              ChatLog.type == TypeEnum.CHAT, ChatLog.operate == OperationEnum.GENERATE_SQL)).order_by(
-        ChatLog.start_time)
+        ChatLog.start_time)  # 查询当前会话的所有SQL生成日志
     result = session.execute(stmt).all()
     _list = []
     for row in result:
@@ -722,7 +722,7 @@ def list_generate_chart_logs(session: SessionDep, chart_id: int) -> List[ChatLog
     stmt = select(ChatLog).where(
         and_(ChatLog.pid.in_(select(ChatRecord.id).where(and_(ChatRecord.chat_id == chart_id))),
              ChatLog.type == TypeEnum.CHAT, ChatLog.operate == OperationEnum.GENERATE_CHART)).order_by(
-        ChatLog.start_time)
+        ChatLog.start_time)  # 查询当前会话的所有图表生成日志
     result = session.execute(stmt).all()
     _list = []
     for row in result:
@@ -868,7 +868,7 @@ def save_analysis_predict_record(session: SessionDep, base_record: ChatRecord, a
 
 def start_log(session: SessionDep, ai_modal_id: int = None, ai_modal_name: str = None, operate: OperationEnum = None,
               record_id: int = None, full_message: Union[list[dict], dict] = None,
-              local_operation: bool = False) -> ChatLog:  # 持久化聊天记录明细【一条chatRecord对应多条chatLog】
+              local_operation: bool = False) -> ChatLog:  # 持久化聊天记录明细--起始操作日志【一条chatRecord对应多条chatLog】
     log = ChatLog(type=TypeEnum.CHAT, operate=operate, pid=record_id, ai_modal_id=ai_modal_id, base_modal=ai_modal_name,
                   messages=full_message, start_time=datetime.datetime.now(), local_operation=local_operation)
 
@@ -885,7 +885,7 @@ def start_log(session: SessionDep, ai_modal_id: int = None, ai_modal_name: str =
 
 def end_log(session: SessionDep, log: ChatLog, full_message: Union[list[dict], dict, str],
             reasoning_content: str = None,
-            token_usage=None) -> ChatLog:
+            token_usage=None) -> ChatLog:  # 持久化聊天记录明细--完成操作日志【一条chatRecord对应多条chatLog】
     if token_usage is None:
         token_usage = {}
     log.messages = full_message

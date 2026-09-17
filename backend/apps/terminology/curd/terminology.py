@@ -857,9 +857,9 @@ def select_terminology_by_word(session: SessionDep, word: str, oid: int, datasou
         )
     )  # 当前条件：找出用户问题文本中包含的所有术语
 
-    if advanced_application_id is not None:
+    if advanced_application_id is not None:  # 采用高级应用id过滤
         stmt = stmt.where(Terminology.advanced_application == advanced_application_id)
-    elif datasource is not None:
+    elif datasource is not None:  # 采用问数数据源id过滤
         stmt = stmt.where(
             or_(
                 or_(Terminology.specific_ds == False, Terminology.specific_ds.is_(None)),  # 不限制数据源的术语
@@ -870,7 +870,7 @@ def select_terminology_by_word(session: SessionDep, word: str, oid: int, datasou
                 )  # 属于当前数据源的术语
             )
         )  # 当前条件：找出属于当前数据源id的术语或者不限制数据源的术语
-    else:
+    else:  # 不限问数数据源【全问数数据源可用】
         stmt = stmt.where(or_(Terminology.specific_ds == False, Terminology.specific_ds.is_(None)))
 
     # 执行查询
@@ -974,7 +974,7 @@ def to_xml_string(_dict: list[dict] | dict, root: str = 'terminologies') -> str:
 
 def get_terminology_template(session: SessionDep, question: str, oid: Optional[int] = 1,
                              datasource: Optional[int] = None,
-                             advanced_application_id: Optional[int] = None) -> tuple[str, list[dict]]:  # 基于用户问题获取【相应工作空间的相应问数数据源的】术语信息
+                             advanced_application_id: Optional[int] = None) -> tuple[str, list[dict]]:  # 获取【相应工作空间的相应问数数据源的】与用户问题相关的术语信息
     if not oid:
         oid = 1
     _results = select_terminology_by_word(session, question, oid, datasource, advanced_application_id)  #  【“关键词查询”【术语word在问题中完整出现即可】和向量相似度查询】获取与用户问题相关的术语信息【术语树形式】
