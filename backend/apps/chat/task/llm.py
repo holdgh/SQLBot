@@ -184,7 +184,7 @@ class LLMService:
         self.generate_sql_logs = list_generate_sql_logs(session=session, chart_id=chat_id)  # 当前会话的所有SQL生成日志
         self.generate_chart_logs = list_generate_chart_logs(session=session, chart_id=chat_id)  # 查询当前会话的所有图表生成日志
 
-        self.change_title = not get_chat_brief_generate(session=session, chat_id=chat_id)
+        self.change_title = not get_chat_brief_generate(session=session, chat_id=chat_id)  # 相应会话是否已存在会话摘要，存在则change_title为false，也即不更新会话摘要；不存在则change_title为true，也即要【更新】生成会话摘要
 
         self.ds = (
             ds if isinstance(ds, AssistantOutDsSchema) else CoreDatasource(**ds.model_dump())) if ds else None  # 问数数据源
@@ -267,13 +267,13 @@ class LLMService:
         except Exception as e:
             return True
 
-    def init_messages(self, session: Session):
+    def init_messages(self, session: Session):  # 基于对话历史【SQL生成历史上下文和图表内容生成历史上下文】及预设的提示词模板【SQL生成提示词模板和图表内容生成提示词模板】构造当前用户问题的SQL生成上下文消息列表【系统构造的SQL生成上下文列表和SQL生成历史上下文】和图表内容生成上下文消息列表【系统构造的图表内容生成上下文列表和图表内容生成历史上下文】
 
         self.table_name_list = self.choose_table_schema(session)  # 获取当前问数数据源的且已授权当前用户的表结构信息及样例数据，仅返回数据表名列表【表结构信息及样例数据已通过属性赋值于当前llmService实例】
 
         last_sql_messages: List[dict[str, Any]] = self.generate_sql_logs[-1].messages if len(
             self.generate_sql_logs) > 0 else []  # 取当前会话的最近一条SQL生成日志上下文明细
-        if self.chat_question.regenerate_record_id:  # 如果是重新生成场景，则获取相应问题的SQL生成日志上下文明细【也即获取同一问题的最近一条SQL生成日志上下文明细】
+        if self.chat_question.regenerate_record_id:  # 如果是重新生成场景，则获取相应问题的SQL生成日志上下文明细【也即获取同一问题的最近一条SQL生成日志上下文明细】 TODO 这里很关键！重新生成场景，保证和上一次一样的sql生成上下文明细【比如我翻阅聊天记录，对很久之前的问题点击了重新生成按钮，则SQL生成上下文明细就以当时的为准，中间的这些对话相对于我点击重新生成的那个问题，一般是没有作用的。也即等价于重新生成的操作仅发生上一条问题。】
             # filter record before regenerate_record_id
             _temp_log = next(
                 filter(lambda obj: obj.pid == self.chat_question.regenerate_record_id, self.generate_sql_logs), None)
@@ -282,69 +282,69 @@ class LLMService:
         # 排除所有的系统构造的提示词【通过查看SQL生成日志上下文明细，结合下述代码可知：sqlbot会构造一系列的上下文，这些构造的上下文特点就是其sqlbot_system采用默认值true】
         last_sql_messages = [obj for obj in last_sql_messages if obj.get("sqlbot_system") != True]
 
-        count_limit = self.base_message_round_count_limit
+        count_limit = self.base_message_round_count_limit  # 历史对话记录的数量上限
 
         self.sql_message = []  # 初始化当前SQL生成上下文明细
         # add sys prompt
         _system_templates = self.chat_question.sql_sys_question(self.ds.type, self.enable_sql_row_limit)  # 获取SQL生成系统提示词模板
-        self.sql_message.append(SystemPromptMessage(content=_system_templates['system']))  # 设置系统提示词
-        self.sql_message.append(HumanPromptMessage(content=_system_templates['rules']))  # 构造用户消息：阐述规则
+        self.sql_message.append(SystemPromptMessage(content=_system_templates['system']))  # 设置SQL生成系统提示词
+        self.sql_message.append(HumanPromptMessage(content=_system_templates['rules']))  # 构造用户提示消息：阐述规则
         self.sql_message.append(
-            AIPromptMessage(content='我已掌握所有规则，包括表结构、SQL规范、安全限制和输出格式，我会严格遵守这些规则。'))  # 构造ai消息：表示已知悉和遵守规则
-        self.sql_message.append(HumanPromptMessage(content=_system_templates['schema']))  # 构造用户消息：提供表结构信息
+            AIPromptMessage(content='我已掌握所有规则，包括表结构、SQL规范、安全限制和输出格式，我会严格遵守这些规则。'))  # 构造ai提示消息：表示已知悉和遵守规则
+        self.sql_message.append(HumanPromptMessage(content=_system_templates['schema']))  # 构造用户提示消息：提供表结构信息
         self.sql_message.append(
-            AIPromptMessage(content='我已确认您提供的数据库信息与表结构schema，我生成的SQL不会超出您提供的范围。'))  # 构造ai消息：表示已知悉表结构信息
-        if _system_templates.get('custom_prompt'):  # 如果存在自定义提示词 TODO 至此~
-            self.sql_message.append(HumanPromptMessage(content=_system_templates['custom_prompt']))  # 构造用户消息：阐述自定义提示词【与业务场景强相关的信息】
-            self.sql_message.append(AIPromptMessage(content='我已确认您提供的额外信息，我会进行参考。'))
-        if _system_templates.get('terminologies'):
-            self.sql_message.append(HumanPromptMessage(content=_system_templates['terminologies']))
-            self.sql_message.append(AIPromptMessage(content='我已确认您提供的术语信息，我会进行参考。'))
-        if _system_templates.get('data_training'):
-            self.sql_message.append(HumanPromptMessage(content=_system_templates['data_training']))
-            self.sql_message.append(AIPromptMessage(content='我已确认您提供的SQL示例，我会进行参考。'))
+            AIPromptMessage(content='我已确认您提供的数据库信息与表结构schema，我生成的SQL不会超出您提供的范围。'))  # 构造ai提示消息：表示已知悉表结构信息
+        if _system_templates.get('custom_prompt'):  # 如果存在与用户问题相关的自定义提示词
+            self.sql_message.append(HumanPromptMessage(content=_system_templates['custom_prompt']))  # 构造用户提示消息：阐述自定义提示词【与业务场景强相关的信息】
+            self.sql_message.append(AIPromptMessage(content='我已确认您提供的额外信息，我会进行参考。'))  # 构造ai提示消息：表示已知悉自定义提示词内容
+        if _system_templates.get('terminologies'):  # 如果存在与用户问题相关的术语
+            self.sql_message.append(HumanPromptMessage(content=_system_templates['terminologies']))  # 构造用户提示消息：给出与用户问题相关的术语
+            self.sql_message.append(AIPromptMessage(content='我已确认您提供的术语信息，我会进行参考。'))  # 构造ai提示消息：表示已知晓用户提供的术语信息
+        if _system_templates.get('data_training'):  # 如果存在与用户问题相关的SQL示例
+            self.sql_message.append(HumanPromptMessage(content=_system_templates['data_training']))  # 构造用户提示消息：给出与用户问题相关的SQL示例信息
+            self.sql_message.append(AIPromptMessage(content='我已确认您提供的SQL示例，我会进行参考。'))  # 构造ai提示消息：表示已知晓用户提供的SQL示例信息
 
-        if last_sql_messages is not None and len(last_sql_messages) > 0:
-            last_rounds = get_last_conversation_rounds(last_sql_messages, rounds=count_limit)
+        if last_sql_messages is not None and len(last_sql_messages) > 0:  # 【非系统构造的】SQL生成上下文明细非空时
+            last_rounds = get_last_conversation_rounds(last_sql_messages, rounds=count_limit)  # 获取SQL生成上下文明细中的最近N轮对话
 
             for _msg_dict in last_rounds:
                 _msg: BaseMessage
                 if _msg_dict.get('type') == 'human':
-                    _msg = HumanMessage(content=_msg_dict.get('content'))
+                    _msg = HumanMessage(content=_msg_dict.get('content'))  # 构造用户消息：输出要求、注意事项、当前时间、用户问题等
                     self.sql_message.append(_msg)
-                elif _msg_dict.get('type') == 'ai':
+                elif _msg_dict.get('type') == 'ai':  # 构造ai消息：SQL语句及图表类型
                     _msg = AIMessage(content=_msg_dict.get('content'))
                     self.sql_message.append(_msg)
 
         last_chart_messages: List[dict[str, Any]] = self.generate_chart_logs[-1].messages if len(
-            self.generate_chart_logs) > 0 else []
-        if self.chat_question.regenerate_record_id:
+            self.generate_chart_logs) > 0 else []  # 取当前会话的最近一条图表内容【标题、坐标轴名称及其取值对应的SQL查询结果字段名】生成日志上下文明细
+        if self.chat_question.regenerate_record_id:  # 如果是重新生成场景，则获取相应问题的图表内容生成日志上下文明细【也即获取同一问题的最近一条图表内容生成日志上下文明细】
             # filter record before regenerate_record_id
             _temp_log = next(
                 filter(lambda obj: obj.pid == self.chat_question.regenerate_record_id, self.generate_chart_logs), None)
             last_chart_messages: List[dict[str, Any]] = _temp_log.messages if _temp_log else []
 
-        # 排除所有的系统提示词
+        # 排除所有的系统提示词【通过查看图表内容生成日志上下文明细，结合下述代码可知：sqlbot会构造一系列的上下文，这些构造的上下文特点就是其sqlbot_system采用默认值true】
         last_chart_messages = [obj for obj in last_chart_messages if obj.get("sqlbot_system") != True]
 
-        count_chart_limit = self.base_message_round_count_limit
+        count_chart_limit = self.base_message_round_count_limit  # 历史对话记录的数量上限
 
-        self.chart_message = []
+        self.chart_message = []  # 初始化当前图表内容生成上下文明细
         # add sys prompt
-        _chart_system_templates = self.chat_question.chart_sys_question()
-        self.chart_message.append(SystemPromptMessage(content=_chart_system_templates['system']))
-        self.chart_message.append(HumanPromptMessage(content=_chart_system_templates['rules']))
-        self.chart_message.append(AIPromptMessage(content='我已掌握所有规则，我会严格遵守这些规则来生成符合要求的JSON。'))
-        if last_chart_messages is not None and len(last_chart_messages) > 0:
-            last_rounds = get_last_conversation_rounds(last_chart_messages, rounds=count_chart_limit)
+        _chart_system_templates = self.chat_question.chart_sys_question()  # 获取图表内容生成提示词模板
+        self.chart_message.append(SystemPromptMessage(content=_chart_system_templates['system']))  # 设置图表内容生成系统提示词
+        self.chart_message.append(HumanPromptMessage(content=_chart_system_templates['rules']))  # 构造用户提示消息：阐述图表内容生成规则
+        self.chart_message.append(AIPromptMessage(content='我已掌握所有规则，我会严格遵守这些规则来生成符合要求的JSON。'))  # 构造ai提示消息：表示已知悉规则
+        if last_chart_messages is not None and len(last_chart_messages) > 0:  # 【非系统构造的】图表内容生成上下文明细非空时
+            last_rounds = get_last_conversation_rounds(last_chart_messages, rounds=count_chart_limit)  # 获取图表内容生成上下文明细中的最近N轮对话
 
             for _msg_dict in last_rounds:
                 _msg: BaseMessage
                 if _msg_dict.get('type') == 'human':
-                    _msg = HumanMessage(content=_msg_dict.get('content'))
+                    _msg = HumanMessage(content=_msg_dict.get('content'))  # 构造用户消息：输出要求、注意事项、SQL语句及数据库表结构、用户问题等
                     self.chart_message.append(_msg)
                 elif _msg_dict.get('type') == 'ai':
-                    _msg = AIMessage(content=_msg_dict.get('content'))
+                    _msg = AIMessage(content=_msg_dict.get('content'))  # 构造ai消息：图表内容【标题、坐标轴名称及其取值对应的SQL查询结果字段名】
                     self.chart_message.append(_msg)
 
     def init_record(self, session: Session) -> ChatRecord:  # 持久化问题记录【无论问题内容是否重复，统一持久化处理】
@@ -788,11 +788,11 @@ class LLMService:
         if _error:
             raise _error
 
-    def generate_sql(self, _session: Session):
+    def generate_sql(self, _session: Session):  # 基于SQL生成上下文生成SQL，并将SQL生成结果维护到对话记录中
         # append current question
         self.sql_message.append(HumanMessage(
             self.chat_question.sql_user_question(current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                                                 change_title=self.change_title)))
+                                                 change_title=self.change_title)))  # 基于当前用户问题构造用户消息：输出要求、注意事项、当前时间、用户问题【如果是重新生成场景，则用户问题中会带有重新生成提示说明】等
 
         self.current_logs[OperationEnum.GENERATE_SQL] = start_log(session=_session,
                                                                   ai_modal_id=self.chat_question.ai_modal_id,
@@ -804,19 +804,19 @@ class LLMService:
                                                                        'sqlbot_system': getattr(msg, 'sqlbot_system',
                                                                                                 False) is True,
                                                                        'content': msg.content} for msg
-                                                                      in self.sql_message])
+                                                                      in self.sql_message])  # 持久化SQL生成查询日志【内含SQL生成上下文】并收集到当前实例
         full_thinking_text = ''
         full_sql_text = ''
         token_usage = {}
-        res = process_stream(self.llm.stream(self.sql_message), token_usage)
+        res = process_stream(self.llm.stream(self.sql_message), token_usage)  # 流式解析模型输出
         for chunk in res:
-            if chunk.get('content'):
+            if chunk.get('content'):  # 模型回答内容
                 full_sql_text += chunk.get('content')
-            if chunk.get('reasoning_content'):
+            if chunk.get('reasoning_content'):  # 模型推理思考内容
                 full_thinking_text += chunk.get('reasoning_content')
             yield chunk
 
-        self.sql_message.append(AIMessage(full_sql_text))
+        self.sql_message.append(AIMessage(full_sql_text))  # 构造ai消息：模型SQL生成结果
 
         self.current_logs[OperationEnum.GENERATE_SQL] = end_log(session=_session,
                                                                 log=self.current_logs[OperationEnum.GENERATE_SQL],
@@ -827,9 +827,9 @@ class LLMService:
                                                                                'content': msg.content}
                                                                               for msg in self.sql_message],
                                                                 reasoning_content=full_thinking_text,
-                                                                token_usage=token_usage)
+                                                                token_usage=token_usage)  # 持久化SQL生成查询日志【内含SQL生成上下文、SQL生成结果和SQL生成推理内容】并收集到当前实例
         self.record = save_sql_answer(session=_session, record_id=self.record.id,
-                                      answer=orjson.dumps({'content': full_sql_text}).decode())
+                                      answer=orjson.dumps({'content': full_sql_text}).decode())  # 将SQL生成结果更新维护到对话记录中
 
     def generate_with_sub_sql(self, session: Session, sql, sub_mappings: list):
         sub_query = json.dumps(sub_mappings, ensure_ascii=False)
@@ -963,7 +963,7 @@ class LLMService:
 
     def generate_chart(self, _session: Session, chart_type: Optional[str] = '', schema: Optional[str] = ''):
         # append current question
-        self.chart_message.append(HumanMessage(self.chat_question.chart_user_question(chart_type, schema)))
+        self.chart_message.append(HumanMessage(self.chat_question.chart_user_question(chart_type, schema)))  # 基于图表类型、问数数据源表结构信息构造用户消息：语言、SQL语句、用户问题、规则、图表类型、问数数据源表结构信息
 
         self.current_logs[OperationEnum.GENERATE_CHART] = start_log(session=_session,
                                                                     ai_modal_id=self.chat_question.ai_modal_id,
@@ -976,11 +976,11 @@ class LLMService:
                                                                                                   False) is True,
                                                                          'content': msg.content} for
                                                                         msg
-                                                                        in self.chart_message])
+                                                                        in self.chart_message])  # 持久化图表生成查询日志【内含大模型名称、图表生成上下文】并收集到当前实例
         full_thinking_text = ''
         full_chart_text = ''
         token_usage = {}
-        res = process_stream(self.llm.stream(self.chart_message), token_usage)
+        res = process_stream(self.llm.stream(self.chart_message), token_usage)  # TODO 至此~
         for chunk in res:
             if chunk.get('content'):
                 full_chart_text += chunk.get('content')
@@ -1003,7 +1003,7 @@ class LLMService:
                                                                   reasoning_content=full_thinking_text,
                                                                   token_usage=token_usage)
 
-    def check_sql(self, session: Session, res: str, operate: OperationEnum) -> tuple[str, Optional[list]]:
+    def check_sql(self, session: Session, res: str, operate: OperationEnum) -> tuple[str, Optional[list]]:  # 校验模型生成SQL结果json格式并提取SQL内容和数据表名
         json_str = extract_nested_json(res)
 
         log = self.current_logs[operate]
@@ -1036,7 +1036,7 @@ class LLMService:
         return sql, data.get('tables')
 
     @staticmethod
-    def get_chart_type_from_sql_answer(res: str) -> Optional[str]:
+    def get_chart_type_from_sql_answer(res: str) -> Optional[str]:  # 从SQL生成结果中提取图表类型
         json_str = extract_nested_json(res)
         if json_str is None:
             return None
@@ -1161,7 +1161,7 @@ class LLMService:
     def save_error(self, session: Session, message: str):
         return save_error_message(session=session, record_id=self.record.id, message=message)
 
-    def save_sql_data(self, session: Session, data_obj: Dict[str, Any]):
+    def save_sql_data(self, session: Session, data_obj: Dict[str, Any]):  # 将SQL执行结果【超过1000条时，仅取1000条】更新保存到对话记录中
         try:
             data_result = data_obj.get('data')
             limit = 1000
@@ -1249,9 +1249,9 @@ class LLMService:
 
                 self.filter_custom_prompts(_session, CustomPromptTypeEnum.GENERATE_SQL, oid, ds_id)  # 筛选用户自定义提示词【社区版不具备该功能】
 
-                self.init_messages(_session)
+                self.init_messages(_session)  # 基于对话历史【SQL生成历史上下文和图表内容生成历史上下文】及预设的提示词模板【SQL生成提示词模板和图表内容生成提示词模板】构造当前用户问题的SQL生成上下文消息列表【系统构造的SQL生成上下文列表和SQL生成历史上下文】和图表内容生成上下文消息列表【系统构造的图表内容生成上下文列表和图表内容生成历史上下文】 TODO 这里会用到上面收集的与用户问题相关的术语、SQL示例、自定义提示词
 
-            # return id
+            # return id 首先返回当前用户问题的数据表记录信息【id、问题内容】
             if in_chat:
                 yield 'data:' + orjson.dumps({'type': 'id', 'id': self.get_record().id}).decode() + '\n\n'
                 if self.get_record().regenerate_record_id:
@@ -1266,8 +1266,8 @@ class LLMService:
             if not stream:
                 json_result['record_id'] = self.get_record().id
 
-                # select datasource if datasource is none
-            if not self.ds:
+            # select datasource if datasource is none
+            if not self.ds:  # 如果问数数据源为空，则选择一个问数数据源 TODO 待梳理
                 ds_res = self.select_datasource(_session)
 
                 for chunk in ds_res:
@@ -1281,45 +1281,45 @@ class LLMService:
                                                   'engine_type': self.ds.type_name or self.ds.type,
                                                   'type': 'datasource'}).decode() + '\n\n'
 
-            else:
+            else:  # 问数数据源非空，则验证其有效性【是否存在于数据库】
                 self.validate_history_ds(_session)
 
-            # check connection
+            # check connection 校验问数数据源连接有效性
             connected = check_connection(ds=self.ds, trans=None)
             if not connected:
                 raise SQLBotDBConnectionError('Connect DB failed')
 
-            # generate sql
-            sql_res = self.generate_sql(_session)
+            # generate sql 基于SQL生成上下文生成SQL，并将SQL生成结果维护到对话记录中
+            sql_res = self.generate_sql(_session)  # **仅仅创建生成器对象！generate_sql 函数内部代码此时完全没跑！** 生成器只有被迭代（for /next ()）才会执行。
             full_sql_text = ''
             for chunk in sql_res:
                 full_sql_text += chunk.get('content')
                 if in_chat:
                     yield 'data:' + orjson.dumps(
                         {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
-                         'type': 'sql-result'}).decode() + '\n\n'
+                         'type': 'sql-result'}).decode() + '\n\n'  # `yield` 是**暂停函数、返回一个值，下次迭代从暂停位置继续执行**；生成器是**单向拉取**：外层 `for ... in X` 会驱动 X 内部执行直到遇到下一个 yield。
             if in_chat:
                 yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'sql generated'}).decode() + '\n\n'
-            # filter sql
+            # filter sql 打印最终SQL生成结果日志
             SQLBotLogUtil.info(full_sql_text)
 
-            chart_type = self.get_chart_type_from_sql_answer(full_sql_text)
+            chart_type = self.get_chart_type_from_sql_answer(full_sql_text)  # 从SQL生成结果中提取图表类型
 
             # return title
-            if self.change_title:
+            if self.change_title:  # 如果当前会话不存在会话摘要，则基于llm生成会话摘要
                 llm_brief = self.get_brief_from_sql_answer(full_sql_text)
                 llm_brief_generated = bool(llm_brief)
                 if llm_brief_generated or (self.chat_question.question and self.chat_question.question.strip() != ''):
                     save_brief = llm_brief if (llm_brief and llm_brief != '') else self.chat_question.question.strip()[
-                                                                                   :20]
+                                                                                   :20]  # 会话摘要内容：SQL生成结果中的brief字段值或者当前用户问题的前20个字符
                     brief = rename_chat(session=_session,
                                         rename_object=RenameChat(id=self.get_record().chat_id,
-                                                                 brief=save_brief, brief_generate=llm_brief_generated))
+                                                                 brief=save_brief, brief_generate=llm_brief_generated))  # 更新会话记录中的会话摘要信息
                     if in_chat:
                         yield 'data:' + orjson.dumps({'type': 'brief', 'brief': brief}).decode() + '\n\n'
                     if not stream:
                         json_result['title'] = brief
-
+            # 校验模型生成SQL的合法性
             use_dynamic_ds: bool = self.current_assistant and self.current_assistant.type in dynamic_ds_types
             is_page_embedded: bool = self.current_assistant and self.current_assistant.type == 4
             dynamic_sql_result = None
@@ -1328,7 +1328,7 @@ class LLMService:
             # row permission
 
             sql_operate = OperationEnum.GENERATE_SQL
-            sql, tables = self.check_sql(session=_session, res=full_sql_text, operate=sql_operate)
+            sql, tables = self.check_sql(session=_session, res=full_sql_text, operate=sql_operate)  # 校验模型生成SQL结果json格式并提取SQL内容和数据表名
 
             # 表名安全检查：用 sqlglot 解析真实 SQL，不信任 AI 返回的 tables
             actual_tables = extract_tables_from_sql(sql, ds_type=self.ds.type)
@@ -1339,7 +1339,7 @@ class LLMService:
                 )
             allowed_tables = set(self.table_name_list)
             unauthorized_tables = actual_tables - allowed_tables
-            if unauthorized_tables:
+            if unauthorized_tables:  # 校验SQL生成结果中的表名是否属于当前问数数据源表名集合
                 raise SingleMessageError(
                     f"SQL contains unauthorized tables: {', '.join(unauthorized_tables)}. "
                     f"Allowed tables: {', '.join(allowed_tables)}"
@@ -1367,14 +1367,14 @@ class LLMService:
                 else:
                     sql = self.check_save_sql(session=_session, res=full_sql_text, operate=sql_operate)
             else:
-                sql = self.check_save_sql(session=_session, res=full_sql_text, operate=sql_operate)
+                sql = self.check_save_sql(session=_session, res=full_sql_text, operate=sql_operate)  # 将大模型生成的sql语句更新维护到对话记录中
 
-            SQLBotLogUtil.info('sql: ' + sql)
+            SQLBotLogUtil.info('sql: ' + sql)  # 日志打印大模型生成的SQL语句
 
             if not stream:
                 json_result['sql'] = sql
 
-            format_sql = sqlparse.format(sql, reindent=True)
+            format_sql = sqlparse.format(sql, reindent=True)  # 对大模型生成的SQL语句进行格式化处理【仅用于向前端展示】
             if in_chat:
                 yield 'data:' + orjson.dumps({'content': format_sql, 'type': 'sql'}).decode() + '\n\n'
             else:
@@ -1390,7 +1390,7 @@ class LLMService:
                                                                           subsql)
                 real_execute_sql = assistant_dynamic_sql
 
-            if finish_step.value <= ChatFinishStep.GENERATE_SQL.value:
+            if finish_step.value <= ChatFinishStep.GENERATE_SQL.value:  # 如果仅需要生成SQL语句，则直接结束当前方法
                 if in_chat:
                     yield 'data:' + orjson.dumps({'type': 'finish'}).decode() + '\n\n'
                 if not stream:
@@ -1399,24 +1399,24 @@ class LLMService:
 
             self.current_logs[OperationEnum.EXECUTE_SQL] = start_log(session=_session,
                                                                      operate=OperationEnum.EXECUTE_SQL,
-                                                                     record_id=self.record.id, local_operation=True)
-            result = self.execute_sql(sql=real_execute_sql)
+                                                                     record_id=self.record.id, local_operation=True)  # 持久化执行sql日志并收集到当前实例
+            result = self.execute_sql(sql=real_execute_sql)  # 执行SQL语句
             self.current_logs[OperationEnum.EXECUTE_SQL] = end_log(session=_session,
                                                                    log=self.current_logs[OperationEnum.EXECUTE_SQL],
                                                                    full_message={'sql': real_execute_sql,
-                                                                                 'count': len(result.get('data'))})
-
-            _data = DataFormat.convert_large_numbers_in_object_array(result.get('data'))
+                                                                                 'count': len(result.get('data'))})  # 持久化执行sql日志【内含执行SQL起始日志、SQL语句、SQL查询结果条数】并收集到当前实例
+            # 对SQL查询结果进行：大数字【整型超过1e15、浮点型超过1e10】转化为字符串、"字段名":"字段值"的字典化处理
+            _data = DataFormat.convert_large_numbers_in_object_array(result.get('data'))  # 处理对象数组，将每个对象中的大数字转换为字符串
             _data = DataFormat.normalize_qualified_sql_column_keys_in_object_array(_data)
             result["data"] = _data
 
-            self.save_sql_data(session=_session, data_obj=result)
+            self.save_sql_data(session=_session, data_obj=result)  # 将SQL执行结果【超过1000条时，仅取1000条】更新保存到对话记录
             if in_chat:
                 yield 'data:' + orjson.dumps({'content': 'execute-success', 'type': 'sql-data'}).decode() + '\n\n'
             if not stream:
                 json_result['data'] = get_chat_chart_data(_session, self.record.id)
 
-            if finish_step.value <= ChatFinishStep.QUERY_DATA.value:
+            if finish_step.value <= ChatFinishStep.QUERY_DATA.value:  # 如果仅需要生成SQL语句并执行查询数据，则直接返回
                 if stream:
                     if in_chat:
                         yield 'data:' + orjson.dumps({'type': 'finish'}).decode() + '\n\n'
@@ -1432,7 +1432,7 @@ class LLMService:
 
                         if not _data or not _fields_list:
                             yield 'The SQL execution result is empty.\n\n'
-                        else:
+                        else:  # 以markdown表格的格式一次性流式返回SQL查询结果
                             df = pd.DataFrame(_data, columns=_fields_list)
                             df_safe = DataFormat.safe_convert_to_string(df)
                             markdown_table = df_safe.to_markdown(index=False)
@@ -1441,7 +1441,7 @@ class LLMService:
                     yield json_result
                 return
 
-            # generate chart
+            # generate chart 生成图表
             used_tables_schema, used_tables = self.out_ds_instance.get_db_schema(
                 self.ds.id, self.chat_question.question, embedding=False,
                 table_list=tables) if self.out_ds_instance else get_table_schema(
@@ -1449,9 +1449,9 @@ class LLMService:
                 current_user=self.current_user,
                 ds=self.ds,
                 question=self.chat_question.question,
-                embedding=False, table_list=tables)
-            SQLBotLogUtil.info('used_tables_schema: \n' + used_tables_schema)
-            chart_res = self.generate_chart(_session, chart_type, used_tables_schema)
+                embedding=False, table_list=tables)  # 获取问数数据源且已授权当前用户的表结构信息文本【如果存在表关系，一并体现】和表名列表
+            SQLBotLogUtil.info('used_tables_schema: \n' + used_tables_schema)  # 打印问数数据源的表结构信息
+            chart_res = self.generate_chart(_session, chart_type, used_tables_schema)  # 基于图表类型、问数数据源的表结构信息生成图表
             full_chart_text = ''
             for chunk in chart_res:
                 full_chart_text += chunk.get('content')
@@ -1720,11 +1720,11 @@ class LLMService:
             # end
             session_maker.remove()
 
-    def validate_history_ds(self, session: Session):
+    def validate_history_ds(self, session: Session):  # 验证问数数据源的有效性
         _ds = self.ds
         if not self.current_assistant or self.current_assistant.type == 4:
             try:
-                current_ds = session.get(CoreDatasource, _ds.id)
+                current_ds = session.get(CoreDatasource, _ds.id)  # 当前问数数据源是否存在与数据库
                 if not current_ds:
                     raise SingleMessageError('chat.ds_is_invalid')
             except Exception as e:
@@ -1846,7 +1846,7 @@ def process_stream(res: Iterator[BaseMessageChunk],
                    enable_tag_parsing: bool = settings.PARSE_REASONING_BLOCK_ENABLED,
                    start_tag: str = settings.DEFAULT_REASONING_CONTENT_START,
                    end_tag: str = settings.DEFAULT_REASONING_CONTENT_END
-                   ):
+                   ):  # 流式解析模型输出
     if token_usage is None:
         token_usage = {}
     in_thinking_block = False  # 标记是否在思考过程块中
@@ -1854,7 +1854,7 @@ def process_stream(res: Iterator[BaseMessageChunk],
     pending_start_tag = ''  # 用于缓存可能被截断的开始标签部分
 
     for chunk in res:
-        SQLBotLogUtil.info(chunk)
+        SQLBotLogUtil.info(chunk)  # 打印模型流式输出结果
         reasoning_content_chunk = ''
         content = chunk.content
         output_content = ''  # 实际要输出的内容

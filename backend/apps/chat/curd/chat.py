@@ -35,7 +35,7 @@ def get_chat_record_by_id(session: SessionDep, record_id: int):
     return record
 
 
-def get_chat(session: SessionDep, chat_id: int) -> Chat:
+def get_chat(session: SessionDep, chat_id: int) -> Chat:  # 获取会话信息
     statement = select(Chat).where(Chat.id == chat_id)
     chat = session.exec(statement).scalars().first()
     return chat
@@ -105,7 +105,7 @@ def rename_chat_with_user(session: SessionDep, current_user: CurrentUser, rename
     return brief
 
 
-def rename_chat(session: SessionDep, rename_object: RenameChat) -> str:
+def rename_chat(session: SessionDep, rename_object: RenameChat) -> str:  # 更新会话摘要
     chat = session.get(Chat, rename_object.id)
     if not chat:
         raise Exception(f"Chat with id {rename_object.id} not found")
@@ -697,11 +697,11 @@ def get_chat_log_history(session: SessionDep, chat_record_id: int, current_user:
     return chat_log_history
 
 
-def get_chat_brief_generate(session: SessionDep, chat_id: int):
-    chat = get_chat(session=session, chat_id=chat_id)
-    if chat is not None and chat.brief_generate is not None:
-        return chat.brief_generate
-    else:
+def get_chat_brief_generate(session: SessionDep, chat_id: int):  # 相应会话是否已存在会话摘要
+    chat = get_chat(session=session, chat_id=chat_id)  # 获取会话记录信息
+    if chat is not None and chat.brief_generate is not None:  # 会话记录存在
+        return chat.brief_generate  # 是否已生成会话摘要
+    else:  # 会话记录不存在，则返回false
         return False
 
 
@@ -916,7 +916,7 @@ def trigger_log_error(session: SessionDep, log: ChatLog) -> ChatLog:
     return log
 
 
-def save_sql_answer(session: SessionDep, record_id: int, answer: str) -> ChatRecord:
+def save_sql_answer(session: SessionDep, record_id: int, answer: str) -> ChatRecord:  # 将SQL生成结果更新维护到对话记录中
     if not record_id:
         raise Exception("Record id cannot be None")
 
@@ -1040,7 +1040,7 @@ def save_recommend_question_answer(session: SessionDep, record_id: int,
     return record
 
 
-def save_sql(session: SessionDep, record_id: int, sql: str) -> ChatRecord:
+def save_sql(session: SessionDep, record_id: int, sql: str) -> ChatRecord:  # 将模型生成的SQL语句更新维护到对话记录中
     if not record_id:
         raise Exception("Record id cannot be None")
 
@@ -1150,7 +1150,7 @@ def save_error_message(session: SessionDep, record_id: int, message: str) -> Cha
     return result
 
 
-def save_sql_exec_data(session: SessionDep, record_id: int, data: str) -> ChatRecord:
+def save_sql_exec_data(session: SessionDep, record_id: int, data: str) -> ChatRecord:  # 将SQL执行结果更新保存到对话记录中
     if not record_id:
         raise Exception("Record id cannot be None")
     record = get_chat_record_by_id(session, record_id)

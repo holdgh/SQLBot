@@ -33,7 +33,7 @@ class DataFormat:
             ks = str(k)
             if "." not in ks:
                 continue
-            short = ks.rsplit(".", 1)[-1]
+            short = ks.rsplit(".", 1)[-1]  # 仅取字段名，去除前面的表名
             if short not in out:
                 out[short] = v
         return out

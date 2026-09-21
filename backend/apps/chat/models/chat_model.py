@@ -302,12 +302,12 @@ class AiModelQuestion(BaseModel):
 
     def sql_user_question(self, current_time: str, change_title: bool):
         _question = self.question
-        if self.regenerate_record_id:
+        if self.regenerate_record_id:  # 如果是重新生成场景，则选择追加重新生成提示词模板到用户问题中
             _question = get_sql_template()['regenerate_hint'] + self.question
         return get_sql_template()['user'].format(lang=self.lang, engine=self.engine, schema=self.db_schema,
                                                  question=_question,
                                                  rule=self.rule, current_time=current_time, error_msg=self.error_msg,
-                                                 change_title=change_title)
+                                                 change_title=change_title)  # 基于当前用户问题构造用户消息：输出要求、注意事项、当前时间、用户问题等
 
     def chart_sys_question(self):
         templates: dict[str, str] = {
@@ -316,7 +316,7 @@ class AiModelQuestion(BaseModel):
         }
         return templates
 
-    def chart_user_question(self, chart_type: Optional[str] = '', schema: Optional[str] = ''):
+    def chart_user_question(self, chart_type: Optional[str] = '', schema: Optional[str] = ''):  # 构造图表生成上下文中的用户信息：语言、SQL语句、用户问题、规则、图表类型、问数数据源表结构信息
         return get_chart_template()['user'].format(lang=self.lang, sql=self.sql, question=self.question, rule=self.rule,
                                                    chart_type=chart_type, schema=schema)
 
