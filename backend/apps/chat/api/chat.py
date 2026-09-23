@@ -247,7 +247,7 @@ def find_base_question(record_id: int, session: SessionDep):
 async def question_answer(session: SessionDep, current_user: CurrentUser, request_question: ChatQuestionBase,
                           current_assistant: CurrentAssistant):
     question = ChatQuestion(chat_id=request_question.chat_id, question=request_question.question)
-    return await question_answer_inner(session, current_user, question, current_assistant, embedding=True)  # 未传finish_step参数，也即默认需要生成图表
+    return await question_answer_inner(session, current_user, question, current_assistant, embedding=True)  # 未传finish_step参数，也即默认需要生成图表；未传in_chat参数，也即默认前端会话窗口内进行问数操作【由前端基于后端传回的图表数据生成图表】
 
 
 async def question_answer_inner(session: SessionDep, current_user: CurrentUser, request_question: ChatQuestion,

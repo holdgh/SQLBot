@@ -916,7 +916,7 @@ def trigger_log_error(session: SessionDep, log: ChatLog) -> ChatLog:
     return log
 
 
-def save_sql_answer(session: SessionDep, record_id: int, answer: str) -> ChatRecord:  # 将SQL生成结果更新维护到对话记录中
+def save_sql_answer(session: SessionDep, record_id: int, answer: str) -> ChatRecord:  # 将大模型的SQL生成结果更新维护到对话记录中
     if not record_id:
         raise Exception("Record id cannot be None")
 
@@ -1040,7 +1040,7 @@ def save_recommend_question_answer(session: SessionDep, record_id: int,
     return record
 
 
-def save_sql(session: SessionDep, record_id: int, sql: str) -> ChatRecord:  # 将模型生成的SQL语句更新维护到对话记录中
+def save_sql(session: SessionDep, record_id: int, sql: str) -> ChatRecord:  # 将校验处理后的SQL语句更新维护到对话记录中
     if not record_id:
         raise Exception("Record id cannot be None")
 
@@ -1061,7 +1061,7 @@ def save_sql(session: SessionDep, record_id: int, sql: str) -> ChatRecord:  # �
     return result
 
 
-def save_chart_answer(session: SessionDep, record_id: int, answer: str) -> ChatRecord:
+def save_chart_answer(session: SessionDep, record_id: int, answer: str) -> ChatRecord:  # 将大模型的图表生成结果维护到到对话记录中
     if not record_id:
         raise Exception("Record id cannot be None")
 
@@ -1078,7 +1078,7 @@ def save_chart_answer(session: SessionDep, record_id: int, answer: str) -> ChatR
     return record
 
 
-def save_chart(session: SessionDep, record_id: int, chart: str) -> ChatRecord:
+def save_chart(session: SessionDep, record_id: int, chart: str) -> ChatRecord:  # 将校验处理后的图表内容更新维护到对话记录中
     if not record_id:
         raise Exception("Record id cannot be None")
     record = get_chat_record_by_id(session, record_id)
@@ -1170,7 +1170,7 @@ def save_sql_exec_data(session: SessionDep, record_id: int, data: str) -> ChatRe
     return result
 
 
-def finish_record(session: SessionDep, record_id: int) -> ChatRecord:
+def finish_record(session: SessionDep, record_id: int) -> ChatRecord:  # 完成对话操作：记录对话记录的完成时间
     if not record_id:
         raise Exception("Record id cannot be None")
     record = get_chat_record_by_id(session, record_id)

@@ -829,7 +829,7 @@ class LLMService:
                                                                 reasoning_content=full_thinking_text,
                                                                 token_usage=token_usage)  # 持久化SQL生成查询日志【内含SQL生成上下文、SQL生成结果和SQL生成推理内容】并收集到当前实例
         self.record = save_sql_answer(session=_session, record_id=self.record.id,
-                                      answer=orjson.dumps({'content': full_sql_text}).decode())  # 将SQL生成结果更新维护到对话记录中
+                                      answer=orjson.dumps({'content': full_sql_text}).decode())  # 将大模型的SQL生成结果更新维护到对话记录中
 
     def generate_with_sub_sql(self, session: Session, sql, sub_mappings: list):
         sub_query = json.dumps(sub_mappings, ensure_ascii=False)
@@ -980,18 +980,18 @@ class LLMService:
         full_thinking_text = ''
         full_chart_text = ''
         token_usage = {}
-        res = process_stream(self.llm.stream(self.chart_message), token_usage)  # TODO 至此~
+        res = process_stream(self.llm.stream(self.chart_message), token_usage)  # 流式解析模型输出
         for chunk in res:
-            if chunk.get('content'):
+            if chunk.get('content'):  # 模型回答内容
                 full_chart_text += chunk.get('content')
-            if chunk.get('reasoning_content'):
+            if chunk.get('reasoning_content'):  # 模型推理思考内容
                 full_thinking_text += chunk.get('reasoning_content')
             yield chunk
 
-        self.chart_message.append(AIMessage(full_chart_text))
+        self.chart_message.append(AIMessage(full_chart_text))  # 构造ai消息：模型图表生成结果
 
         self.record = save_chart_answer(session=_session, record_id=self.record.id,
-                                        answer=orjson.dumps({'content': full_chart_text}).decode())
+                                        answer=orjson.dumps({'content': full_chart_text}).decode())  # 将图表生成保存到当前对话记录
         self.current_logs[OperationEnum.GENERATE_CHART] = end_log(session=_session,
                                                                   log=self.current_logs[OperationEnum.GENERATE_CHART],
                                                                   full_message=[
@@ -1001,7 +1001,7 @@ class LLMService:
                                                                        'content': msg.content}
                                                                       for msg in self.chart_message],
                                                                   reasoning_content=full_thinking_text,
-                                                                  token_usage=token_usage)
+                                                                  token_usage=token_usage)  # 持久化图表生成查询日志【内含图表生成上下文、图表生成结果和图表生成推理内容】并收集到当前实例
 
     def check_sql(self, session: Session, res: str, operate: OperationEnum) -> tuple[str, Optional[list]]:  # 校验模型生成SQL结果json格式并提取SQL内容和数据表名
         json_str = extract_nested_json(res)
@@ -1178,7 +1178,7 @@ class LLMService:
         except Exception as e:
             raise e
 
-    def finish(self, session: Session):
+    def finish(self, session: Session):  # 完成对话操作：记录当前对话记录的完成时间
         return finish_record(session=session, record_id=self.record.id)
 
     def execute_sql(self, sql: str):
@@ -1367,9 +1367,9 @@ class LLMService:
                 else:
                     sql = self.check_save_sql(session=_session, res=full_sql_text, operate=sql_operate)
             else:
-                sql = self.check_save_sql(session=_session, res=full_sql_text, operate=sql_operate)  # 将大模型生成的sql语句更新维护到对话记录中
+                sql = self.check_save_sql(session=_session, res=full_sql_text, operate=sql_operate)  # 将校验处理后的sql语句更新维护到对话记录中
 
-            SQLBotLogUtil.info('sql: ' + sql)  # 日志打印大模型生成的SQL语句
+            SQLBotLogUtil.info('sql: ' + sql)  # 日志打印校验处理后的SQL语句
 
             if not stream:
                 json_result['sql'] = sql
@@ -1441,7 +1441,7 @@ class LLMService:
                     yield json_result
                 return
 
-            # generate chart 生成图表
+            # generate chart 生成图表 基于图表类型、问数数据源的表结构信息生成图表【json格式图表配置项】并将图表配置项维护到对话记录中
             used_tables_schema, used_tables = self.out_ds_instance.get_db_schema(
                 self.ds.id, self.chat_question.question, embedding=False,
                 table_list=tables) if self.out_ds_instance else get_table_schema(
@@ -1451,30 +1451,30 @@ class LLMService:
                 question=self.chat_question.question,
                 embedding=False, table_list=tables)  # 获取问数数据源且已授权当前用户的表结构信息文本【如果存在表关系，一并体现】和表名列表
             SQLBotLogUtil.info('used_tables_schema: \n' + used_tables_schema)  # 打印问数数据源的表结构信息
-            chart_res = self.generate_chart(_session, chart_type, used_tables_schema)  # 基于图表类型、问数数据源的表结构信息生成图表
+            chart_res = self.generate_chart(_session, chart_type, used_tables_schema)  # 注意这里仅是得到一个生成器，并未真正执行generate_chart操作。仅当对生成器使用for或next操作时，才会触发，并且执行yield停止，直到下一次迭代到达，会在generate_chart中执行yield后续的操作，直到遇到generate_chart中的下一个yield或者generate_chart执行完毕
             full_chart_text = ''
             for chunk in chart_res:
                 full_chart_text += chunk.get('content')
                 if in_chat:
                     yield 'data:' + orjson.dumps(
                         {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
-                         'type': 'chart-result'}).decode() + '\n\n'
+                         'type': 'chart-result'}).decode() + '\n\n'  # 流式返回图表配置项生成结果片段
             if in_chat:
                 yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'chart generated'}).decode() + '\n\n'
 
             # filter chart
-            SQLBotLogUtil.info(full_chart_text)
-            chart = self.check_save_chart(session=_session, res=full_chart_text)
-            SQLBotLogUtil.info(chart)
+            SQLBotLogUtil.info(full_chart_text)  # 打印图表生成完整内容日志
+            chart = self.check_save_chart(session=_session, res=full_chart_text)  # 校验图表配置项格式并将校验后的图表配置项维护到对话记录中
+            SQLBotLogUtil.info(chart)  # 打印校验处理后的图表配置项日志
 
             if not stream:
                 json_result['chart'] = chart
 
-            if in_chat:
+            if in_chat:  # 前端会话窗口内请求问数操作，仅返回图表配置项
                 yield 'data:' + orjson.dumps(
-                    {'content': orjson.dumps(chart).decode(), 'type': 'chart'}).decode() + '\n\n'
-            else:
-                if stream:
+                    {'content': orjson.dumps(chart).decode(), 'type': 'chart'}).decode() + '\n\n'  # 流式输出格式校验处理后的图表配置项
+            else:  # mcp工具调用时，返回markdown格式的图表内容【图表格式和图表数据【SQL查询结果】】
+                if stream:  # 将图表配置项和SQL查询结果构造为markdown格式，并流式一次性输出
                     md_data, _fields_list = DataFormat.convert_data_fields_for_pandas(chart, result.get('fields'),
                                                                                       result.get('data'))
                     # data, _fields_list, col_formats = self.format_pd_data(_column_list, result.get('data'))
@@ -1489,7 +1489,7 @@ class LLMService:
 
             if in_chat:
                 yield 'data:' + orjson.dumps({'type': 'finish'}).decode() + '\n\n'
-            else:
+            else:  # mcp工具调用时，生成图片【调用图表生成服务http://localhost:3000，将该json格式的图表配置项和SQL查询结果转化为真正的图表】
                 # generate picture
                 try:
                     if chart.get('type') != 'table' and return_img:
@@ -1547,7 +1547,7 @@ class LLMService:
                     json_result['message'] = error_msg
                     yield json_result
         finally:
-            self.finish(_session)
+            self.finish(_session)  # 完成当前对话操作：记录当前对话记录的完成时间
             session_maker.remove()
 
     def run_recommend_questions_task_async(self):
@@ -1820,7 +1820,7 @@ def request_picture(chat_id: int, record_id: int, chart: dict, data: dict):
 
     _error = None
     try:
-        requests.post(url=settings.MCP_IMAGE_HOST, json=request_obj, timeout=settings.SERVER_IMAGE_TIMEOUT)
+        requests.post(url=settings.MCP_IMAGE_HOST, json=request_obj, timeout=settings.SERVER_IMAGE_TIMEOUT)  # 生成图表原来在这里呀 TODO 图表生成
     except Exception as e:
         _error = e
 
