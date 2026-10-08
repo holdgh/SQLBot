@@ -898,7 +898,7 @@ def select_terminology_by_word(session: SessionDep, word: str, oid: int, datasou
                 Terminology.word,
             )
             .where(Terminology.oid == oid, Terminology.enabled.is_(True))
-        )
+        )  # 工作空间的数据隔离
 
         if advanced_application_id is not None:
             candidate_stmt = candidate_stmt.where(Terminology.advanced_application == advanced_application_id)
@@ -912,7 +912,7 @@ def select_terminology_by_word(session: SessionDep, word: str, oid: int, datasou
                         text("datasource_ids @> jsonb_build_array(:datasource)")
                     )
                 )
-            )
+            )  # 数据源的数据隔离
         else:
             candidate_stmt = candidate_stmt.where(
                 or_(Terminology.specific_ds.is_(False), Terminology.specific_ds.is_(None)))
@@ -925,7 +925,7 @@ def select_terminology_by_word(session: SessionDep, word: str, oid: int, datasou
 
         candidates = session.execute(candidate_stmt, candidate_params).fetchall()
 
-        for candidate in bm25_retrieve(word, candidates, lambda row: row.word):
+        for candidate in bm25_retrieve(word, candidates, lambda row: row.word):  # 这里的关键词检索逻辑：先基于工作空间、数据源过滤出所有候选术语，然后再对这些候选术语进行bm25关键过滤
             _list.append(Terminology(id=candidate.id, word=candidate.word, pid=candidate.pid))
     # ---- 【改造标记 RAG-KEYWORD】↑ 新代码结束 ----
     # ========= 【改造标记 RAG-KEYWORD】↑ 替换段结束 =========

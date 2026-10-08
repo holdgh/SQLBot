@@ -493,7 +493,7 @@ class LLMService:
 
     # ========= 【改造标记 LLM-CONTEXT-FILTER】↓ 改造点3：RAG 候选项 → 大模型二次过滤 =
     # 挂接位置：三个 filter_* 产出候选项之后、init_messages() 之前。
-    # 行为：候选项总数不足 MIN_CANDIDATES 则跳过（成本控制）；LLM 返回 {"retain":[编号]} 重组回写
+    # 行为：候选项总数不足 MIN_CANDIDATES 则跳过（成本控制:q）；LLM 返回 {"retain":[编号]} 重组回写
     # chat_question.{terminologies,data_training,custom_prompt}；任何异常均保留原始候选项，不影响问数主流程 =========
     def llm_filter_context(self, _session: Session):
         if not settings.LLM_CONTEXT_FILTER_ENABLED:
