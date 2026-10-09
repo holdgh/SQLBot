@@ -69,6 +69,16 @@
   "i18n_chat": {
     "record_id_in_mcp": "Answer ID: "
   },
+  "i18n_metric": {
+    "metric_not_exists": "This metric does not exist",
+    "metric_name_cannot_be_empty": "Metric name cannot be empty",
+    "metric_type_invalid": "Invalid metric type (atomic/derived/composite)",
+    "additivity_invalid": "Invalid additivity (additive/semi/non)",
+    "exists_in_db": "This metric already exists in the current scope",
+    "dimension_name_cannot_be_empty": "Dimension name cannot be empty",
+    "dimension_exists_in_db": "This dimension already exists",
+    "dimension_not_exists": "This dimension does not exist"
+  },
   "i18n_terminology": {
     "terminology_not_exists": "This terminology does not exist",
     "datasource_cannot_be_none": "Datasource cannot be empty",

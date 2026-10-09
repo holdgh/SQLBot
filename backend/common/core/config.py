@@ -148,10 +148,17 @@ class Settings(BaseSettings):
     LLM_CONTEXT_FILTER_MIN_CANDIDATES: int = 3  # 候选项总数低于该值时跳过大模型过滤（成本控制）
     # ========= 【改造标记 LLM-CONTEXT-FILTER】↑ 配置结束 =========
 
+    # ========= 【改造标记 METRIC-CENTER】↓ 指标中心配置（Phase 1） =========
+    METRIC_CENTER_ENABLED: bool = False  # 默认关=与原版行为完全一致（filter 不执行、提示词无变化）
+    EMBEDDING_METRIC_SIMILARITY: float = EMBEDDING_DEFAULT_SIMILARITY
+    EMBEDDING_METRIC_TOP_COUNT: int = EMBEDDING_DEFAULT_TOP_COUNT
+    # ========= 【改造标记 METRIC-CENTER】↑ 指标中心配置结束 =========
+
     @field_validator('SQL_DEBUG',
                      'EMBEDDING_ENABLED',
                      'KEYWORD_RETRIEVAL_ENABLED',
                      'LLM_CONTEXT_FILTER_ENABLED',
+                     'METRIC_CENTER_ENABLED',
                      'GENERATE_SQL_QUERY_LIMIT_ENABLED',
                      'PARSE_REASONING_BLOCK_ENABLED',
                      'PG_POOL_PRE_PING',

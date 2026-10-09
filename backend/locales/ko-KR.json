@@ -69,6 +69,16 @@
   "i18n_chat": {
     "record_id_in_mcp": "응답 ID: "
   },
+  "i18n_metric": {
+    "metric_not_exists": "이 지표가 존재하지 않습니다",
+    "metric_name_cannot_be_empty": "지표 이름은 비울 수 없습니다",
+    "metric_type_invalid": "잘못된 지표 유형 (atomic/derived/composite)",
+    "additivity_invalid": "잘못된 가산성 (additive/semi/non)",
+    "exists_in_db": "현재 범위에 이 지표가 이미 존재합니다",
+    "dimension_name_cannot_be_empty": "차원 이름은 비울 수 없습니다",
+    "dimension_exists_in_db": "이 차원이 이미 존재합니다",
+    "dimension_not_exists": "이 차원이 존재하지 않습니다"
+  },
   "i18n_terminology": {
     "terminology_not_exists": "이 용어가 존재하지 않습니다",
     "datasource_cannot_be_none": "데이터 소스는 비울 수 없습니다",

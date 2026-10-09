@@ -12,6 +12,9 @@ class OperationModules(str, Enum):
     PERMISSION = "permission"  # 权限
     RULES = "rules"  # q组
     TERMINOLOGY = "terminology"  # 术语
+    # ========= 【改造标记 METRIC-CENTER】↓ 指标中心（str Enum，无 DDL） =========
+    METRIC = "metric"  # 指标
+    # ========= 【改造标记 METRIC-CENTER】↑ 结束 =========
     DATA_TRAINING = "data_training"  # SQL 示例库
     PROMPT_WORDS = "prompt_words"  # 自定义提示词
     USER = "user"  # 用户

@@ -24,6 +24,9 @@ import EmbeddedCommon from '@/views/embedded/common.vue'
 import Member from '@/views/system/member/index.vue'
 import Professional from '@/views/system/professional/index.vue'
 import Training from '@/views/system/training/index.vue'
+// ========= 【改造标记 METRIC-CENTER】↓ 指标管理页路由导入 =========
+import Metric from '@/views/system/metric/index.vue'
+// ========= 【改造标记 METRIC-CENTER】↑ 导入结束 =========
 // ========= 【改造标记 CUSTOM-PROMPT】↓ 旧代码：Prompt 视图直接导入已外置到 promptRoute.ts =========
 // import Prompt from '@/views/system/prompt/index.vue'
 // ========= 【改造标记 CUSTOM-PROMPT】↑ 旧代码注释结束 =========
@@ -144,6 +147,14 @@ export const routes = [
         component: Training,
         meta: { title: t('training.data_training') },
       },
+      // ========= 【改造标记 METRIC-CENTER】↓ 指标管理路由（/set/* 且 isSpaceAdmin 可见，见 Menu.vue:66） =========
+      {
+        path: '/set/metric',
+        name: 'metric',
+        component: Metric,
+        meta: { title: t('metric.metric_management') },
+      },
+      // ========= 【改造标记 METRIC-CENTER】↑ 路由挂载结束 =========
       // ========= 【改造标记 CUSTOM-PROMPT】↓ 路由定义外置到 promptRoute.ts（watch.ts 恢复逻辑复用） =========
       promptRoute,
       // ========= 【改造标记 CUSTOM-PROMPT】↑ 路由挂载结束 =========

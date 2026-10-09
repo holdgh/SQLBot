@@ -50,6 +50,9 @@ class OperationEnum(Enum):
     # ========= 【改造标记 LLM-CONTEXT-FILTER】↓ RAG 候选项大模型二次过滤日志（operate 列非原生 Enum 无 CHECK 约束，无需 DDL 迁移） =========
     LLM_CONTEXT_FILTER = '14'
     # ========= 【改造标记 LLM-CONTEXT-FILTER】↑ 枚举新增结束 =========
+    # ========= 【改造标记 METRIC-CENTER】↓ 指标候选项召回日志（operate 列非原生 Enum 无 CHECK 约束，无需 DDL） =========
+    FILTER_METRICS = '15'
+    # ========= 【改造标记 METRIC-CENTER】↑ 枚举新增结束 =========
 
 
 class ChatFinishStep(Enum):
@@ -250,6 +253,9 @@ class AiModelQuestion(BaseModel):
     lang: str = "简体中文"
     filter: str = []
     sub_query: Optional[list[dict]] = None
+    # ========= 【改造标记 METRIC-CENTER】↓ 指标块（排在术语块之前注入） =========
+    metrics: str = ""
+    # ========= 【改造标记 METRIC-CENTER】↑ 结束 =========
     terminologies: str = ""
     data_training: str = ""
     custom_prompt: str = ""
@@ -288,6 +294,11 @@ class AiModelQuestion(BaseModel):
                                                                      example_answer_3=_example_answer_3)
         templates['schema'] = _base_template['generate_basic_info'].format(engine=self.engine, schema=self.db_schema,
                                                                            sample_data=self.sample_data)
+
+        # ========= 【改造标记 METRIC-CENTER】↓ 指标信息块（排在术语块之前） =========
+        if self.metrics:
+            templates['metrics'] = _base_template['generate_metric_info'].format(metrics=self.metrics)
+        # ========= 【改造标记 METRIC-CENTER】↑ 结束 =========
 
         if self.terminologies:
             templates['terminologies'] = _base_template['generate_terminologies_info'].format(

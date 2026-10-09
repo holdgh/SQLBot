@@ -5,6 +5,11 @@ template:
   data_training: |
     
     {data_training}
+  # ========= 【改造标记 METRIC-CENTER】↓ 指标块包装模板 =========
+  metric: |
+    
+    {metrics}
+  # ========= 【改造标记 METRIC-CENTER】↑ 指标块模板结束 =========
   # ========= 【改造标记 LLM-CONTEXT-FILTER】↓ RAG 候选项大模型二次过滤提示词模板 =========
   llm_context_filter: |
     你是上下文筛选助手。请根据用户问题，从 RAG 检索出的候选上下文中筛选出真正相关的条目。
@@ -353,6 +358,12 @@ template:
     generate_custom_prompt_info: |
       以下是你可以参考的额外信息：
       {custom_prompt}
+
+    # ========= 【改造标记 METRIC-CENTER】↓ 指标信息块模板 =========
+    generate_metric_info: |
+      以下是你可以参考的业务指标（请遵循其口径定义生成SQL）：
+      {metrics}
+    # ========= 【改造标记 METRIC-CENTER】↑ 指标信息块模板结束 =========
 
     generate_basic_info: |
       ## 以下是数据库与表结构信息，你生成的SQL使用到的表名与字段必须在提供的范围内

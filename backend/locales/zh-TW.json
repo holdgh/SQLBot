@@ -69,6 +69,16 @@
   "i18n_chat": {
     "record_id_in_mcp": "響應ID: "
   },
+  "i18n_metric": {
+    "metric_not_exists": "該指標不存在",
+    "metric_name_cannot_be_empty": "指標名稱不能為空",
+    "metric_type_invalid": "指標類型不合法（atomic/derived/composite）",
+    "additivity_invalid": "可加性不合法（additive/semi/non）",
+    "exists_in_db": "該指標在當前作用域已存在",
+    "dimension_name_cannot_be_empty": "維度名稱不能為空",
+    "dimension_exists_in_db": "該維度已存在",
+    "dimension_not_exists": "該維度不存在"
+  },
   "i18n_terminology": {
     "terminology_not_exists": "該術語不存在",
     "datasource_cannot_be_none": "數據源不能為空",

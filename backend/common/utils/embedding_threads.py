@@ -23,6 +23,18 @@ def fill_empty_terminology_embeddings():
     executor.submit(run_fill_empty_embeddings, session_maker)
 
 
+# ========= 【改造标记 METRIC-CENTER】↓ 指标检索文档 embedding 线程 =========
+def run_save_metric_embeddings(ids: List[int]):
+    from apps.metric.curd.metric import save_embeddings
+    executor.submit(save_embeddings, session_maker, ids)
+
+
+def fill_empty_metric_embeddings():
+    from apps.metric.curd.metric import run_fill_empty_embeddings
+    executor.submit(run_fill_empty_embeddings, session_maker)
+# ========= 【改造标记 METRIC-CENTER】↑ 结束 =========
+
+
 def run_save_data_training_embeddings(ids: List[int]):
     from apps.data_training.curd.data_training import save_embeddings
     executor.submit(save_embeddings, session_maker, ids)

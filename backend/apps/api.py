@@ -8,6 +8,9 @@ from apps.dashboard.api import dashboard_api
 from apps.data_training.api import data_training
 from apps.datasource.api import datasource, table_relation, recommended_problem
 from apps.mcp import mcp
+# ========= 【改造标记 METRIC-CENTER】↓ 指标中心路由 =========
+from apps.metric.api import metric
+# ========= 【改造标记 METRIC-CENTER】↑ 路由导入结束 =========
 from apps.system.api import login, user, aimodel, workspace, assistant, parameter, apikey, variable_api
 from apps.terminology.api import terminology
 from apps.settings.api import base
@@ -22,6 +25,9 @@ api_router.include_router(assistant.router)
 api_router.include_router(aimodel.router)
 api_router.include_router(base.router)
 api_router.include_router(terminology.router)
+# ========= 【改造标记 METRIC-CENTER】↓ 指标中心路由注册 =========
+api_router.include_router(metric.router)
+# ========= 【改造标记 METRIC-CENTER】↑ 路由注册结束 =========
 # ========= 【改造标记 CUSTOM-PROMPT】↓ 注册顺序在 main.py: sqlbot_xpack.init_fastapi_app 之前，同路径时开源路由优先生效 =========
 api_router.include_router(custom_prompt.router)
 # ========= 【改造标记 CUSTOM-PROMPT】↑ 路由注册结束 =========

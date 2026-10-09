@@ -63,6 +63,10 @@ from apps.template.generate_chart.generator import get_base_data_training_templa
 from apps.template.template import get_base_template
 # ========= 【改造标记 LLM-CONTEXT-FILTER】↑ 模板 getter 导入结束 =========
 from apps.terminology.curd.terminology import get_terminology_template, to_xml_string as terminology_to_xml
+# ========= 【改造标记 METRIC-CENTER】↓ 指标中心薄插桩导入（G1：llm.py 只加调用与开关判断） =========
+from apps.metric.curd.metric import get_metric_template, to_xml_string as metric_to_xml
+from apps.template.generate_chart.generator import get_base_metric_template
+# ========= 【改造标记 METRIC-CENTER】↑ 导入结束 =========
 from common.core.config import settings
 from common.core.db import engine
 from common.core.deps import CurrentAssistant, CurrentUser
@@ -312,6 +316,12 @@ class LLMService:
         if _system_templates.get('custom_prompt'):
             self.sql_message.append(HumanPromptMessage(content=_system_templates['custom_prompt']))
             self.sql_message.append(AIPromptMessage(content='我已确认您提供的额外信息，我会进行参考。'))
+        # ========= 【改造标记 METRIC-CENTER】↓ 指标块（排在术语块之前注入） =========
+        if _system_templates.get('metrics'):
+            self.sql_message.append(HumanPromptMessage(content=_system_templates['metrics']))
+            self.sql_message.append(
+                AIPromptMessage(content='我已确认您提供的业务指标信息，我会参考其口径生成SQL。'))
+        # ========= 【改造标记 METRIC-CENTER】↑ 指标块注入结束 =========
         if _system_templates.get('terminologies'):
             self.sql_message.append(HumanPromptMessage(content=_system_templates['terminologies']))
             self.sql_message.append(AIPromptMessage(content='我已确认您提供的术语信息，我会进行参考。'))
@@ -378,6 +388,40 @@ class LLMService:
     def get_fields_from_chart(self, _session: Session):
         chart_info = get_chart_config(_session, self.record.id)
         return format_chart_fields(chart_info)
+
+    # ========= 【改造标记 METRIC-CENTER】↓ 指标候选项召回（薄插桩 G1：只加调用与开关判断） =========
+    def filter_metric_template(self, _session: Session, oid: int = None, ds_id: int = None):
+        # 开关关 = 零行为差异（不写日志、不召回、提示词无变化）
+        if not settings.METRIC_CENTER_ENABLED:
+            self._metric_candidates = []
+            return
+
+        self.current_logs[OperationEnum.FILTER_METRICS] = start_log(session=_session,
+                                                                     operate=OperationEnum.FILTER_METRICS,
+                                                                     record_id=self.record.id,
+                                                                     local_operation=True)
+        calculate_oid = oid
+        calculate_ds_id = ds_id
+        if self.current_assistant:
+            calculate_oid = self.current_assistant.oid if self.current_assistant.type != 4 else self.oid
+            if self.current_assistant.type == 1:
+                calculate_ds_id = None
+        try:
+            self.chat_question.metrics, metric_list = get_metric_template(_session,
+                                                                          self.chat_question.question,
+                                                                          calculate_oid,
+                                                                          calculate_ds_id)
+        except Exception as e:
+            # 召回失败不阻断问数主流程
+            SQLBotLogUtil.error(f'filter_metric_template failed, keep metrics empty: {e}', exc_info=True)
+            self.chat_question.metrics, metric_list = '', []
+
+        self.current_logs[OperationEnum.FILTER_METRICS] = end_log(session=_session,
+                                                                   log=self.current_logs[OperationEnum.FILTER_METRICS],
+                                                                   full_message=metric_list)
+        # 暂存候选项，供 llm_filter_context 大模型二次筛选
+        self._metric_candidates = metric_list or []
+    # ========= 【改造标记 METRIC-CENTER】↑ 指标召回结束 =========
 
     def filter_terminology_template(self, _session: Session, oid: int = None, ds_id: int = None):
         self.current_logs[OperationEnum.FILTER_TERMS] = start_log(session=_session,
@@ -501,12 +545,17 @@ class LLMService:
         term_candidates = getattr(self, '_terminology_candidates', None) or []
         training_candidates = getattr(self, '_data_training_candidates', None) or []
         prompt_candidates = getattr(self, '_custom_prompt_candidates', None) or []
+        # ========= 【改造标记 METRIC-CENTER】↓ 读取指标候选项并计入总数 =========
+        metric_candidates = getattr(self, '_metric_candidates', None) or []
+        # ========= 【改造标记 METRIC-CENTER】↑ 读取结束 =========
         # ========= 【改造标记 LLM-CONTEXT-FILTER-NAME】↓ 改造点3议题三：读取结构化候选项（name+正文），
         # 长度对齐才启用 name，否则回退纯正文展示，避免编号错位 =========
         prompt_named = getattr(self, '_custom_prompt_candidates_named', None) or []
         named_aligned = len(prompt_named) == len(prompt_candidates)
         # ========= 【改造标记 LLM-CONTEXT-FILTER-NAME】↑ 读取结束 =========
-        total = len(term_candidates) + len(training_candidates) + len(prompt_candidates)
+        # ========= 【改造标记 METRIC-CENTER】↓ total 计入指标候选项 =========
+        total = len(term_candidates) + len(training_candidates) + len(prompt_candidates) + len(metric_candidates)
+        # ========= 【改造标记 METRIC-CENTER】↑ total 计算结束 =========
         if total < settings.LLM_CONTEXT_FILTER_MIN_CANDIDATES:
             return
 
@@ -514,6 +563,25 @@ class LLMService:
         sections: list[str] = []
         index_map: list[tuple] = []  # (category, local_index) 按全局编号顺序
         global_index = 0
+        # ========= 【改造标记 METRIC-CENTER】↓ [指标] 分组（编号顺延，排在术语之前） =========
+        if metric_candidates:
+            sections.append('[指标]')
+            for local_i, item in enumerate(metric_candidates):
+                name = (item.get('metric_name') or '')[:100]
+                mtype = item.get('metric_type') or 'atomic'
+                desc = (item.get('description') or '')[:500]
+                agg = (item.get('aggregation') or '')[:50]
+                dims = '、'.join([d.get('dimension_name') or '' for d in (item.get('dimensions') or [])])
+                line = f'{global_index}. {name}（类型:{mtype}'
+                if agg:
+                    line += f'；聚合:{agg}'
+                line += f'）：{desc}'
+                if dims:
+                    line += f'；支持维度:{dims}'
+                sections.append(line)
+                index_map.append(('metric', local_i))
+                global_index += 1
+        # ========= 【改造标记 METRIC-CENTER】↑ [指标] 分组结束 =========
         if term_candidates:
             sections.append('[术语]')
             for local_i, item in enumerate(term_candidates):
@@ -546,6 +614,13 @@ class LLMService:
 
         system_content = get_base_template()['template']['llm_context_filter'].format(
             question=question, candidates=candidates_text)
+        # ========= 【改造标记 METRIC-CENTER】↓ 仅当存在指标候选项时增补指标相关性判断条款；
+        # 无指标候选（含开关关）时渲染结果与原版逐字一致 =========
+        if metric_candidates:
+            system_content = system_content.replace(
+                '术语需与问题涉及的指标/概念相关；',
+                '术语需与问题涉及的指标/概念相关；业务指标需与问题要查询的口径相关；', 1)
+        # ========= 【改造标记 METRIC-CENTER】↑ 增补结束 =========
         log_messages: list[dict] = [
             {'type': 'system', 'content': system_content},
             {'type': 'human', 'content': question},
@@ -593,16 +668,26 @@ class LLMService:
             else:
                 retained_globals = [i for i in range(len(index_map)) if i in retain_set]
 
-            filtered: dict = {'terminology': [], 'data_training': [], 'custom_prompt': []}
-            source_map = {'terminology': term_candidates,
+            # ========= 【改造标记 METRIC-CENTER】↓ filtered/source_map 增加 metric 键 =========
+            filtered: dict = {'metric': [], 'terminology': [], 'data_training': [], 'custom_prompt': []}
+            source_map = {'metric': metric_candidates,
+                          'terminology': term_candidates,
                           'data_training': training_candidates,
                           'custom_prompt': prompt_candidates}
+            # ========= 【改造标记 METRIC-CENTER】↑ 键扩展结束 =========
             for i in retained_globals:
                 category, local_i = index_map[i]
                 filtered[category].append(source_map[category][local_i])
 
             # 回写（与三个 filter_* 的产出格式保持一致：terminology/data_training 为 base 模板包装的 XML，
             # custom_prompt 为 Other-Infos 裸 XML）
+            # ========= 【改造标记 METRIC-CENTER】↓ 指标候选项回写 chat_question.metrics =========
+            if filtered['metric']:
+                self.chat_question.metrics = get_base_metric_template().format(
+                    metrics=metric_to_xml(filtered['metric'], 'metrics'))
+            else:
+                self.chat_question.metrics = ''
+            # ========= 【改造标记 METRIC-CENTER】↑ 指标回写结束 =========
             if filtered['terminology']:
                 self.chat_question.terminologies = get_base_terminology_template().format(
                     terminologies=terminology_to_xml(filtered['terminology']))
@@ -622,8 +707,10 @@ class LLMService:
                 'question': question,
                 'counts': {
                     'before': total,
-                    'after': len(filtered['terminology']) + len(filtered['data_training']) +
-                             len(filtered['custom_prompt']),
+                    # ========= 【改造标记 METRIC-CENTER】↓ after 计数加入指标 =========
+                    'after': len(filtered['metric']) + len(filtered['terminology']) +
+                             len(filtered['data_training']) + len(filtered['custom_prompt']),
+                    # ========= 【改造标记 METRIC-CENTER】↑ 计数结束 =========
                 },
                 'retained': retained_globals,
                 'dropped': [i for i in range(len(index_map)) if i not in retained_globals],
@@ -984,6 +1071,10 @@ class LLMService:
         if self.ds:
             oid = self.ds.oid if isinstance(self.ds, CoreDatasource) else 1
             ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
+
+            # ========= 【改造标记 METRIC-CENTER】↓ 指标召回（在 filter_terminology_template 之前） =========
+            self.filter_metric_template(_session, oid, ds_id)
+            # ========= 【改造标记 METRIC-CENTER】↑ 挂接结束 =========
 
             self.filter_terminology_template(_session, oid, ds_id)
 
@@ -1454,6 +1545,10 @@ class LLMService:
             if self.ds:
                 oid = self.ds.oid if isinstance(self.ds, CoreDatasource) else 1
                 ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
+
+                # ========= 【改造标记 METRIC-CENTER】↓ 指标召回（已有数据源分支，在 filter_terminology_template 之前） =========
+                self.filter_metric_template(_session, oid, ds_id)
+                # ========= 【改造标记 METRIC-CENTER】↑ 挂接结束 =========
 
                 self.filter_terminology_template(_session, oid, ds_id)
 
