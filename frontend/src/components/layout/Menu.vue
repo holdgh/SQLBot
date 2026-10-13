@@ -55,6 +55,9 @@ const routerList = computed(() => {
       !route.path.includes('401') &&
       !route.path.includes('training') &&
       !route.path.includes('prompt') &&
+      // ========= 【改造标记 METRIC-CENTER】↓ 指标管理仅保留在设置子菜单内，排除顶层重复入口 =========
+      !route.path.includes('metric') &&
+      // ========= 【改造标记 METRIC-CENTER】↑ 排除结束 =========
       !route.path.includes('permission') &&
       !route.path.includes('embeddedCommon') &&
       !route.path.includes('preview') &&
