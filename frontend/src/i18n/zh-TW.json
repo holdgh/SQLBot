@@ -864,7 +864,8 @@
       "FILTER_CUSTOM_PROMPT": "匹配自訂提示詞",
       "EXECUTE_SQL": "執行 SQL",
       "GENERATE_PICTURE": "產生圖片",
-      "LLM_CONTEXT_FILTER": "大模型上下文過濾"
+      "LLM_CONTEXT_FILTER": "大模型上下文過濾",
+      "FILTER_METRICS": "匹配指標"
     },
     "log_system": "對話範本",
     "log_question": "本次提問",
@@ -873,6 +874,7 @@
     "find_term_title": "匹配到 {0} 個術語",
     "find_sql_sample_title": "匹配到 {0} 個SQL範例",
     "find_custom_prompt_title": "匹配到 {0} 個自訂提示詞",
+    "find_metric_title": "匹配到 {0} 個指標",
     "query_count_title": "查詢到 {0} 筆資料",
     "generate_picture_success": "已產生圖片"
   },

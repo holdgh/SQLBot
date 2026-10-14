@@ -864,7 +864,8 @@
       "FILTER_CUSTOM_PROMPT": "Match Custom Prompts",
       "EXECUTE_SQL": "Execute SQL",
       "GENERATE_PICTURE": "Generate Picture",
-      "LLM_CONTEXT_FILTER": "LLM Context Filter"
+      "LLM_CONTEXT_FILTER": "LLM Context Filter",
+      "FILTER_METRICS": "Match Metrics"
     },
     "log_system": "Conversation Template",
     "log_question": "Current Question",
@@ -873,6 +874,7 @@
     "find_term_title": "Matched {0} terms",
     "find_sql_sample_title": "Matched {0} SQL examples",
     "find_custom_prompt_title": "Matched {0} custom prompts",
+    "find_metric_title": "Matched {0} metrics",
     "query_count_title": "Found {0} data entries",
     "generate_picture_success": "Image generated"
   },

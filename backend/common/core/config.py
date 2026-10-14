@@ -149,7 +149,7 @@ class Settings(BaseSettings):
     # ========= 【改造标记 LLM-CONTEXT-FILTER】↑ 配置结束 =========
 
     # ========= 【改造标记 METRIC-CENTER】↓ 指标中心配置（Phase 1） =========
-    METRIC_CENTER_ENABLED: bool = False  # 默认关=与原版行为完全一致（filter 不执行、提示词无变化）
+    METRIC_CENTER_ENABLED: bool = True  # 默认关=与原版行为完全一致（filter 不执行、提示词无变化）
     EMBEDDING_METRIC_SIMILARITY: float = EMBEDDING_DEFAULT_SIMILARITY
     EMBEDDING_METRIC_TOP_COUNT: int = EMBEDDING_DEFAULT_TOP_COUNT
     # ========= 【改造标记 METRIC-CENTER】↑ 指标中心配置结束 =========
