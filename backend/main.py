@@ -31,6 +31,7 @@ from common.core.sqlbot_cache import init_sqlbot_cache
 from common.utils.distributed_lock import SingleWorkerGuard
 from common.utils.embedding_threads import (
     fill_empty_data_training_embeddings,
+    fill_empty_schema_doc_embeddings,
     fill_empty_table_and_ds_embeddings,
     fill_empty_terminology_embeddings,
 )
@@ -57,6 +58,13 @@ def init_table_and_ds_embedding():
     fill_empty_table_and_ds_embeddings()
 
 
+# ========= 【改造标记 SCHEMA-DOC】↓ 启动补齐空 schema 语义文档 embedding =========
+@SingleWorkerGuard.once
+def init_schema_doc_embedding():
+    fill_empty_schema_doc_embeddings()
+# ========= 【改造标记 SCHEMA-DOC】↑ 结束 =========
+
+
 def shutdown_resources() -> None:
     try:
         SingleWorkerGuard.release()
@@ -72,6 +80,7 @@ async def lifespan(app: FastAPI):
     init_terminology_embedding_data()
     init_data_training_embedding_data()
     init_table_and_ds_embedding()
+    init_schema_doc_embedding()
     SQLBotLogUtil.info("✅ SQLBot 初始化完成")
     await sqlbot_xpack.core.clean_xpack_cache()
     await async_model_info()  # 异步加密已有模型的密钥和地址

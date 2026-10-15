@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import List, Optional
 
+from pgvector.sqlalchemy import VECTOR
 from pydantic import BaseModel
 from sqlalchemy import Column, Text, BigInteger, DateTime, Identity
 from sqlalchemy.dialects.postgresql import JSONB
@@ -209,3 +210,38 @@ class SheetFields(BaseModel):
 class ImportRequest(BaseModel):
     filePath: str
     sheets: List[SheetFields]
+
+
+# ========= 【改造标记 SCHEMA-DOC】↓ Phase 2 Schema 语义文档三表 =========
+
+class TableMetadata(SQLModel, table=True):
+    __tablename__ = "table_metadata"
+    id: Optional[int] = Field(sa_column=Column(BigInteger, Identity(always=True), primary_key=True))
+    ds_id: Optional[int] = Field(sa_column=Column(BigInteger, nullable=True))
+    table_name: Optional[str] = Field(max_length=255)
+    description: Optional[str] = Field(sa_column=Column(Text, nullable=True))
+    create_time: Optional[datetime] = Field(sa_column=Column(DateTime(timezone=False), nullable=True))
+
+
+class ColumnMetadata(SQLModel, table=True):
+    __tablename__ = "column_metadata"
+    id: Optional[int] = Field(sa_column=Column(BigInteger, Identity(always=True), primary_key=True))
+    ds_id: Optional[int] = Field(sa_column=Column(BigInteger, nullable=True))
+    table_name: Optional[str] = Field(max_length=255)
+    field_name: Optional[str] = Field(max_length=255)
+    alias: Optional[list] = Field(sa_column=Column(JSONB), default=[])
+    description: Optional[str] = Field(sa_column=Column(Text, nullable=True))
+    create_time: Optional[datetime] = Field(sa_column=Column(DateTime(timezone=False), nullable=True))
+
+
+class SchemaDocument(SQLModel, table=True):
+    __tablename__ = "schema_document"
+    id: Optional[int] = Field(sa_column=Column(BigInteger, Identity(always=True), primary_key=True))
+    ds_id: Optional[int] = Field(sa_column=Column(BigInteger, nullable=True))
+    object_type: Optional[str] = Field(max_length=16)  # TABLE / COLUMN
+    object_key: Optional[str] = Field(sa_column=Column(Text))  # TABLE=表名；COLUMN=表名.字段名
+    document_text: Optional[str] = Field(sa_column=Column(Text, nullable=True))
+    embedding: Optional[List[float]] = Field(sa_column=Column(VECTOR(), nullable=True))
+    create_time: Optional[datetime] = Field(sa_column=Column(DateTime(timezone=False), nullable=True))
+
+# ========= 【改造标记 SCHEMA-DOC】↑ 三表模型结束 =========

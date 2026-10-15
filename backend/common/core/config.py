@@ -154,11 +154,16 @@ class Settings(BaseSettings):
     EMBEDDING_METRIC_TOP_COUNT: int = EMBEDDING_DEFAULT_TOP_COUNT
     # ========= 【改造标记 METRIC-CENTER】↑ 指标中心配置结束 =========
 
+    # ========= 【改造标记 SCHEMA-DOC】↓ Schema 语义文档配置（Phase 2） =========
+    SCHEMA_DOC_ENABLED: bool = True  # 默认关=走既有 DDL embedding 选表路径（互为回退）
+    # ========= 【改造标记 SCHEMA-DOC】↑ Schema 语义文档配置结束 =========
+
     @field_validator('SQL_DEBUG',
                      'EMBEDDING_ENABLED',
                      'KEYWORD_RETRIEVAL_ENABLED',
                      'LLM_CONTEXT_FILTER_ENABLED',
                      'METRIC_CENTER_ENABLED',
+                     'SCHEMA_DOC_ENABLED',
                      'GENERATE_SQL_QUERY_LIMIT_ENABLED',
                      'PARSE_REASONING_BLOCK_ENABLED',
                      'PG_POOL_PRE_PING',

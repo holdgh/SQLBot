@@ -1,7 +1,7 @@
-# ========= 【改造标记 METRIC-CENTER】↓ Phase 1 元数据治理一次性辅助脚本 =========
-"""指标中心 Phase 1 元数据治理辅助脚本（一次性工具，不参与产品运行链路）。
+# ========= 【改造标记 METRIC-CENTER】↓ Phase 1/Phase 2 元数据治理一次性辅助脚本 =========
+"""指标中心 Phase 1/Phase 2 元数据治理辅助脚本（一次性工具，不参与产品运行链路）。
 
-三个子命令（在 backend/ 目录下执行）：
+四个子命令（在 backend/ 目录下执行）：
   gen            读取数据源已勾选表（结构/注释/样本数据），调用 LLM 生成候选草稿：
                    metrics.jsonl      指标候选（含别名/维度名/依赖）
                    dimensions.jsonl   维度候选
@@ -10,18 +10,23 @@
   apply          人工确认后，把 metrics.jsonl + dimensions.jsonl 导入指标中心
                  （走 apps.metric.curd：查重、重建检索文档、补 embedding）
   apply-comments 人工确认后，把 comments.jsonl 写入 core_table/core_field.custom_comment
-                 （默认只补空白，--overwrite 才覆盖已有；这是人工治理动作，
-                   写入后会进入既有问数链路的 DDL 描述，与 METRIC_CENTER_ENABLED 无关）
+                  （默认只补空白，--overwrite 才覆盖已有；这是人工治理动作，
+                    写入后会进入既有问数链路的 DDL 描述，与 METRIC_CENTER_ENABLED 无关）
+  apply-schema-docs 人工确认后，把 schema_docs.jsonl 导入 schema_document（Phase 2 三表已建），
+                  并补 table_metadata/column_metadata 档案（只补缺失，description 为 G5 预留）；
+                  幂等 upsert，文档变更自动重置 embedding 待重算
 
 典型流程：
   python scripts/metric_governance.py gen --ds 1
   # 人工编辑 governance_out/ds1/*.jsonl（可整行删除、可修正字段）
   python scripts/metric_governance.py apply --ds 1
   python scripts/metric_governance.py apply-comments --ds 1   # 可选
+  python scripts/metric_governance.py apply-schema-docs --ds 1 # Phase 2 语义文档入库（可先 --dry-run）
 
 约束：
-  - schema_docs.jsonl 只落文件不建表（Phase 2 才建，规则 G5 预留≠实现）。
   - 指标是否参与问数仍由 METRIC_CENTER_ENABLED 开关控制，本脚本不改产品代码行为。
+  - schema 文档是否参与选表由 SCHEMA_DOC_ENABLED 开关控制（默认 False），
+    apply-schema-docs 只管入库，不改产品代码行为。
 """
 import argparse
 import asyncio
@@ -600,6 +605,97 @@ def cmd_apply_comments(args) -> int:
         session.close()
 
 
+# ---------- apply-schema-docs ----------
+
+def cmd_apply_schema_docs(args) -> int:
+    """人工确认后，把 schema_docs.jsonl 导入 schema_document，并补 metadata 档案。"""
+    from sqlmodel import Session
+
+    from apps.datasource.crud.schema_doc import (
+        save_embeddings,
+        upsert_column_metadata,
+        upsert_schema_documents,
+        upsert_table_metadata,
+    )
+    from apps.datasource.models.datasource import CoreField, CoreTable
+    from common.core.db import engine
+    from common.utils.embedding_threads import session_maker
+
+    in_dir = Path(args.in_) / f'ds{args.ds}'
+    rows = _read_jsonl(in_dir / 'schema_docs.jsonl')
+    if not rows:
+        print(f'[错误] {in_dir} 下没有 schema_docs.jsonl')
+        return 1
+
+    session = Session(engine)
+    try:
+        # 1) 校验 object_key 与现有表/字段对齐（缺失跳过，防止文档与实际表结构脱节）
+        tables = {t.table_name: t.id for t in session.query(CoreTable).filter(
+            CoreTable.ds_id == args.ds).all()}
+        fields_by_table: dict = {}
+        if tables:
+            for f in session.query(CoreField).filter(CoreField.table_id.in_(tables.values())).all():
+                fields_by_table.setdefault(f.table_id, set()).add(f.field_name)
+
+        valid_rows: list[dict] = []
+        skipped = missing = 0
+        for row in rows:
+            object_type = (row.get('object_type') or '').upper()
+            object_key = (row.get('object_key') or '').strip()
+            if object_type not in ('TABLE', 'COLUMN') or not object_key \
+                    or not (row.get('document_text') or '').strip():
+                skipped += 1
+                continue
+            if object_type == 'TABLE':
+                if object_key not in tables:
+                    missing += 1
+                    print(f'  [缺失] 表不存在于 core_table: {object_key}')
+                    continue
+            else:
+                table_name, sep, field_name = object_key.partition('.')
+                if not sep or table_name not in tables:
+                    missing += 1
+                    print(f'  [缺失] 无法解析表名: {object_key}')
+                    continue
+                if field_name not in fields_by_table.get(tables[table_name], set()):
+                    missing += 1
+                    print(f'  [缺失] 字段不存在: {object_key}')
+                    continue
+            valid_rows.append({'object_type': object_type, 'object_key': object_key,
+                               'document_text': row['document_text'].strip()})
+
+        print(f'[校验] 有效 {len(valid_rows)}，无效跳过 {skipped}，缺失 {missing}')
+        if args.dry_run:
+            print('[dry-run] 未写入数据库')
+            return 0
+        if not valid_rows:
+            print('[错误] 没有可导入的有效行')
+            return 1
+
+        # 2) 幂等 upsert 语义文档（文本变更自动重置 embedding）
+        changed_ids = upsert_schema_documents(session, args.ds, valid_rows)
+
+        # 3) metadata 档案：只补缺失行（description/alias 为 G5 预留，不写值不覆盖）
+        table_keys = [r['object_key'] for r in valid_rows if r['object_type'] == 'TABLE']
+        col_pairs = []
+        for r in valid_rows:
+            if r['object_type'] == 'COLUMN':
+                t, _, fname = r['object_key'].partition('.')
+                col_pairs.append((t, fname))
+        meta_tables = upsert_table_metadata(
+            session, args.ds, table_keys + [p[0] for p in col_pairs])
+        meta_columns = upsert_column_metadata(session, args.ds, col_pairs)
+        print(f'[写入] 文档变更 {len(changed_ids)} 条；档案新增 表 {meta_tables}、列 {meta_columns}')
+
+        # 4) 补 embedding（变更行；EMBEDDING_ENABLED=False 时自动跳过，启动补空会兜底）
+        if not args.no_embedding and changed_ids:
+            save_embeddings(session_maker, changed_ids)
+            print('[embedding] 补 embedding 完成（EMBEDDING_ENABLED=False 时自动跳过）')
+        return 0
+    finally:
+        session.close()
+
+
 # ---------- main ----------
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -639,6 +735,12 @@ def _build_parser() -> argparse.ArgumentParser:
     add_common(comments)
     comments.add_argument('--overwrite', action='store_true', help='覆盖已有 custom_comment')
     comments.set_defaults(func=cmd_apply_comments)
+
+    schema_docs = sub.add_parser('apply-schema-docs', help='导入 schema 语义文档（需先人工确认）')
+    add_common(schema_docs)
+    schema_docs.add_argument('--dry-run', action='store_true', help='只校验与打印，不写库')
+    schema_docs.add_argument('--no-embedding', action='store_true', help='导入后不补 embedding')
+    schema_docs.set_defaults(func=cmd_apply_schema_docs)
 
     return parser
 

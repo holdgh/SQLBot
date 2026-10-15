@@ -35,6 +35,18 @@ def fill_empty_metric_embeddings():
 # ========= 【改造标记 METRIC-CENTER】↑ 结束 =========
 
 
+# ========= 【改造标记 SCHEMA-DOC】↓ Schema 语义文档 embedding 线程 =========
+def run_save_schema_doc_embeddings(ids: List[int]):
+    from apps.datasource.crud.schema_doc import save_embeddings
+    executor.submit(save_embeddings, session_maker, ids)
+
+
+def fill_empty_schema_doc_embeddings():
+    from apps.datasource.crud.schema_doc import run_fill_empty_schema_doc_embeddings
+    executor.submit(run_fill_empty_schema_doc_embeddings, session_maker)
+# ========= 【改造标记 SCHEMA-DOC】↑ 结束 =========
+
+
 def run_save_data_training_embeddings(ids: List[int]):
     from apps.data_training.curd.data_training import save_embeddings
     executor.submit(save_embeddings, session_maker, ids)

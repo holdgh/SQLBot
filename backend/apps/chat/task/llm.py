@@ -16,7 +16,7 @@ import sqlparse
 from langchain.chat_models.base import BaseChatModel
 from langchain_community.utilities import SQLDatabase
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, BaseMessageChunk
-from sqlalchemy import and_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlbot_xpack.config.model import SysArgModel
 # ========= 【改造标记 CUSTOM-PROMPT】↓ 旧代码（xpack 闭源导入）已注释保留，禁止删除 =========
@@ -48,6 +48,7 @@ from apps.custom_prompt.models.custom_prompt_model import CustomPromptTypeEnum
 # ========= 【改造标记 CUSTOM-PROMPT】↑ 开源导入结束 =========
 from apps.data_training.curd.data_training import get_training_template, to_xml_string as data_training_to_xml
 from apps.datasource.crud.datasource import get_table_schema, get_tables_sample_data
+from apps.datasource.crud.schema_doc import select_schema_doc_tables
 from apps.datasource.crud.permission import get_row_permission_filters, is_normal_user
 from apps.datasource.embedding.ds_embedding import get_ds_embedding
 from apps.datasource.models.datasource import CoreDatasource
@@ -65,6 +66,7 @@ from apps.template.template import get_base_template
 from apps.terminology.curd.terminology import get_terminology_template, to_xml_string as terminology_to_xml
 # ========= 【改造标记 METRIC-CENTER】↓ 指标中心薄插桩导入（G1：llm.py 只加调用与开关判断） =========
 from apps.metric.curd.metric import get_metric_template, to_xml_string as metric_to_xml
+from apps.metric.models.metric_model import Dimension
 from apps.template.generate_chart.generator import get_base_metric_template
 # ========= 【改造标记 METRIC-CENTER】↑ 导入结束 =========
 from common.core.config import settings
@@ -737,18 +739,67 @@ class LLMService:
             trigger_log_error(_session, self.current_logs[OperationEnum.LLM_CONTEXT_FILTER])
     # ========= 【改造标记 LLM-CONTEXT-FILTER】↑ 改造点3 核心方法结束 =========
 
+    # ========= 【改造标记 SCHEMA-DOC】↓ Phase 2 双粒度语义文档选表（短路 ∪ 检索） =========
+    def _schema_doc_table_list(self, _session: Session) -> list[str]:
+        """TABLE/COLUMN 语义文档检索表清单 ∪ 指标/维度短路表（拍板②：短路落点并入维度表）。
+
+        短路（metric.source_table + dimension.source_table）是加速，schema RAG 是覆盖率保证，两者并存。
+        空清单 = 未召回文档或检索失败，调用方回退原 DDL embedding 路径。
+        """
+        tables = select_schema_doc_tables(_session, self.ds.id, self.chat_question.question)
+        try:
+            candidates = getattr(self, '_metric_candidates', None) or []
+            short_circuit = [m.get('source_table') for m in candidates if m.get('source_table')]
+            dim_names = {d.get('dimension_name') for m in candidates
+                         for d in (m.get('dimensions') or []) if d.get('dimension_name')}
+            if dim_names:
+                rows = _session.execute(
+                    select(Dimension.source_table).where(
+                        Dimension.dimension_name.in_(dim_names),
+                        Dimension.source_table.isnot(None),
+                        or_(Dimension.source_ds_id == self.ds.id,
+                            Dimension.source_ds_id.is_(None)))
+                ).scalars().all()
+                short_circuit.extend(rows)
+            for name in short_circuit:
+                if name and name not in tables:  # 将指标及维度对应的表结构并入schema检索得到的表结构中，也即二者取并集
+                    tables.append(name)
+        except Exception as e:  # noqa: BLE001
+            # 短路收集失败不阻断：仅损失加速，schema RAG 结果仍可用
+            SQLBotLogUtil.error(f'schema doc short-circuit collect failed: {e}', exc_info=True)
+        return tables
+    # ========= 【改造标记 SCHEMA-DOC】↑ 短路/检索合并结束 =========
+
 
     def choose_table_schema(self, _session: Session):
         self.current_logs[OperationEnum.CHOOSE_TABLE] = start_log(session=_session,
                                                                   operate=OperationEnum.CHOOSE_TABLE,
                                                                   record_id=self.record.id,
                                                                   local_operation=True)
-        self.chat_question.db_schema, tables = self.out_ds_instance.get_db_schema(
-            self.ds.id, self.chat_question.question) if self.out_ds_instance else get_table_schema(
-            session=_session,
-            current_user=self.current_user,
-            ds=self.ds,
-            question=self.chat_question.question)
+        if self.out_ds_instance:
+            self.chat_question.db_schema, tables = self.out_ds_instance.get_db_schema(
+                self.ds.id, self.chat_question.question)
+        else:
+            # ========= 【改造标记 SCHEMA-DOC】↓ 开=语义文档选表；关/空结果=原路径（互为回退） =========
+            tables = []
+            if settings.SCHEMA_DOC_ENABLED:
+                doc_tables = self._schema_doc_table_list(_session)
+                if doc_tables:
+                    self.chat_question.db_schema, tables = get_table_schema(
+                        session=_session,
+                        current_user=self.current_user,
+                        ds=self.ds,
+                        question=self.chat_question.question,
+                        embedding=False,
+                        table_list=doc_tables)
+            if not tables:
+                # 回退原路径：开关关 / 无文档 / 文档表全部失效（不在已勾选表集合）
+                self.chat_question.db_schema, tables = get_table_schema(
+                    session=_session,
+                    current_user=self.current_user,
+                    ds=self.ds,
+                    question=self.chat_question.question)
+            # ========= 【改造标记 SCHEMA-DOC】↑ 选表回退结构结束 =========
 
         # Get sample data for all tables
         if not self.out_ds_instance:
