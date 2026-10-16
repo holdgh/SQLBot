@@ -158,6 +158,13 @@ class Settings(BaseSettings):
     SCHEMA_DOC_ENABLED: bool = True  # 默认关=走既有 DDL embedding 选表路径（互为回退）
     # ========= 【改造标记 SCHEMA-DOC】↑ Schema 语义文档配置结束 =========
 
+    # ========= 【改造标记 TRUST-VALIDATE】↓ 可信校验层配置（Phase 3，G4：先观测后阻断） =========
+    METRIC_RULE_ENFORCE: bool = False  # 3-A 阻断级开关：本期仅声明，消费者在 Phase 5（DSL 轨道+plan 强绑定；LLM 轨道始终告警 G2）
+    RESULT_VALIDATOR_ENABLED: bool = False  # 3-B 结果校验开关：开启后仍为 log-only（strict 后置未实现）
+    RESULT_VALIDATOR_MAX_ROWS: int = 5000  # L1 行数超限告警阈值（可配）
+    RESULT_VALIDATOR_MAX_VALUE: float = 1.0e12  # L1 数值量级告警上限（可配）
+    # ========= 【改造标记 TRUST-VALIDATE】↑ 可信校验层配置结束 =========
+
     @field_validator('SQL_DEBUG',
                      'EMBEDDING_ENABLED',
                      'KEYWORD_RETRIEVAL_ENABLED',

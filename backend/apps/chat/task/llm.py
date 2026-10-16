@@ -76,6 +76,10 @@ from common.error import SingleMessageError, SQLBotDBError, ParseSQLResultError,
 from common.utils.data_format import DataFormat
 from common.utils.locale import I18n, I18nHelper
 from common.utils.utils import SQLBotLogUtil, extract_nested_json, prepare_for_orjson
+# ========= 【改造标记 TRUST-VALIDATE】↓ 可信校验层薄插桩导入（G1：实现落 common/utils 独立模块） =========
+from common.utils.metric_validator import check_metric_rule_violations
+from common.utils.result_validator import validate_query_result
+# ========= 【改造标记 TRUST-VALIDATE】↑ 导入结束 =========
 
 warnings.filterwarnings("ignore")
 
@@ -1707,6 +1711,13 @@ class LLMService:
                     f"Allowed tables: {', '.join(allowed_tables)}"
                 )
 
+            # ========= 【改造标记 TRUST-VALIDATE】↓ 3-A 口径校验（告警旁路，G2/G4 不阻断） =========
+            check_metric_rule_violations(session=_session, sql=sql,
+                                          metric_candidates=getattr(self, '_metric_candidates', None),
+                                          ds_id=self.ds.id, ds_type=self.ds.type,
+                                          record_id=self.record.id)
+            # ========= 【改造标记 TRUST-VALIDATE】↑ 3-A 口径校验插桩结束 =========
+
             if ((not self.current_assistant or is_page_embedded) and is_normal_user(
                     self.current_user)) or use_dynamic_ds:
                 sql_result = None
@@ -1767,6 +1778,12 @@ class LLMService:
                                                                    log=self.current_logs[OperationEnum.EXECUTE_SQL],
                                                                    full_message={'sql': real_execute_sql,
                                                                                  'count': len(result.get('data'))})
+
+            # ========= 【改造标记 TRUST-VALIDATE】↓ 3-B 结果校验（log-only，开关 RESULT_VALIDATOR_ENABLED） =========
+            validate_query_result(result=result,
+                                  metric_candidates=getattr(self, '_metric_candidates', None),
+                                  sql=real_execute_sql, record_id=self.record.id)
+            # ========= 【改造标记 TRUST-VALIDATE】↑ 3-B 结果校验插桩结束 =========
 
             _data = DataFormat.convert_large_numbers_in_object_array(result.get('data'))
             _data = DataFormat.normalize_qualified_sql_column_keys_in_object_array(_data)

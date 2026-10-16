@@ -82,6 +82,18 @@ class MetricDependency(SQLModel, table=True):
     expression_hint: Optional[str] = Field(sa_column=Column(Text, nullable=True))
 
 
+# ========= 【改造标记 TRUST-VALIDATE】↓ Phase 3 指标口径校验规则（078 建表） =========
+class MetricRule(SQLModel, table=True):
+    __tablename__ = "metric_rule"
+    id: Optional[int] = Field(sa_column=Column(BigInteger, Identity(always=True), primary_key=True))
+    metric_id: Optional[int] = Field(sa_column=Column(BigInteger, nullable=True))
+    rule_type: Optional[str] = Field(max_length=32, nullable=True)  # required_filter/forbidden_field/forced_agg
+    rule_content: Optional[str] = Field(sa_column=Column(Text, nullable=True))
+    status: Optional[bool] = Field(sa_column=Column(Boolean, default=True))
+    create_time: Optional[datetime] = Field(sa_column=Column(DateTime(timezone=False), nullable=True))
+# ========= 【改造标记 TRUST-VALIDATE】↑ Phase 3 规则模型结束 =========
+
+
 class MetricDependencyInfo(BaseModel):
     depends_on_metric_id: Optional[int] = None
     depends_on_metric_name: Optional[str] = None
