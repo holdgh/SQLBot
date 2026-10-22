@@ -165,12 +165,18 @@ class Settings(BaseSettings):
     RESULT_VALIDATOR_MAX_VALUE: float = 1.0e12  # L1 数值量级告警上限（可配）
     # ========= 【改造标记 TRUST-VALIDATE】↑ 可信校验层配置结束 =========
 
+    # ========= 【改造标记 QUERY-PLAN】↓ Query Plan 语义解析层配置（Phase 4） =========
+    QUERY_PLAN_ENABLED: bool = True  # 默认 False=不调用 plan 生成、零额外 LLM 开销（详情页无 QUERY_PLAN 步骤）
+    QUERY_PLAN_LOW_CONFIDENCE_THRESHOLD: float = 0.6  # 低置信提示阈值（决策②b：结果区提示条触发条件）
+    # ========= 【改造标记 QUERY-PLAN】↑ Query Plan 配置结束 =========
+
     @field_validator('SQL_DEBUG',
                      'EMBEDDING_ENABLED',
                      'KEYWORD_RETRIEVAL_ENABLED',
                      'LLM_CONTEXT_FILTER_ENABLED',
                      'METRIC_CENTER_ENABLED',
                      'SCHEMA_DOC_ENABLED',
+                     'QUERY_PLAN_ENABLED',
                      'GENERATE_SQL_QUERY_LIMIT_ENABLED',
                      'PARSE_REASONING_BLOCK_ENABLED',
                      'PG_POOL_PRE_PING',

@@ -865,7 +865,40 @@
       "EXECUTE_SQL": "執行 SQL",
       "GENERATE_PICTURE": "產生圖片",
       "LLM_CONTEXT_FILTER": "大模型上下文過濾",
-      "FILTER_METRICS": "匹配指標"
+      "FILTER_METRICS": "匹配指標",
+      "QUERY_PLAN": "解析查詢計畫"
+    },
+    "plan": {
+      "failed": "計畫解析失敗（不影響主流程）",
+      "query_type": "查詢類型",
+      "metrics": "指標",
+      "dimensions": "維度",
+      "filters": "過濾條件",
+      "time_range": "時間範圍",
+      "current": "當期",
+      "previous": "對比期",
+      "calculation": "計算意圖",
+      "confidence": "置信度",
+      "llm_self": "模型自評",
+      "recall_gap": "召回分差",
+      "hit_factor": "命中因子",
+      "need_clarification": "需澄清（存在歧義）",
+      "low_confidence": "查詢計畫置信度較低（{0}%），答案可能與預期不符，建議核對查詢意圖或補充時間範圍",
+      "type": {
+        "aggregate": "聚合",
+        "detail": "明細",
+        "trend": "趨勢",
+        "rank": "排名",
+        "compare": "對比"
+      },
+      "calc": {
+        "none": "無",
+        "yoy": "同比",
+        "qoq": "環比",
+        "share": "佔比",
+        "growth": "增長",
+        "rank": "排名"
+      }
     },
     "log_system": "對話範本",
     "log_question": "本次提問",

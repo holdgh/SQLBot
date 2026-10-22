@@ -865,7 +865,40 @@
       "EXECUTE_SQL": "Execute SQL",
       "GENERATE_PICTURE": "Generate Picture",
       "LLM_CONTEXT_FILTER": "LLM Context Filter",
-      "FILTER_METRICS": "Match Metrics"
+      "FILTER_METRICS": "Match Metrics",
+      "QUERY_PLAN": "Query Plan Parsing"
+    },
+    "plan": {
+      "failed": "Plan parsing failed (main flow unaffected)",
+      "query_type": "Query Type",
+      "metrics": "Metrics",
+      "dimensions": "Dimensions",
+      "filters": "Filters",
+      "time_range": "Time Range",
+      "current": "Current",
+      "previous": "Comparison",
+      "calculation": "Calculation",
+      "confidence": "Confidence",
+      "llm_self": "Model self-score",
+      "recall_gap": "Recall gap",
+      "hit_factor": "Hit factor",
+      "need_clarification": "Needs clarification (ambiguous)",
+      "low_confidence": "Low query plan confidence ({0}%). The answer may not match your intent; please verify the intent or add a time range",
+      "type": {
+        "aggregate": "Aggregate",
+        "detail": "Detail",
+        "trend": "Trend",
+        "rank": "Rank",
+        "compare": "Compare"
+      },
+      "calc": {
+        "none": "None",
+        "yoy": "YoY",
+        "qoq": "QoQ",
+        "share": "Share",
+        "growth": "Growth",
+        "rank": "Rank"
+      }
     },
     "log_system": "Conversation Template",
     "log_question": "Current Question",

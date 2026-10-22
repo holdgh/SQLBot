@@ -193,3 +193,6 @@ test.py
 sqlbot-xpack
 
 .claude
+
+# 治理脚本运行草稿（数据非代码）
+backend/governance_out/

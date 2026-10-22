@@ -11,6 +11,7 @@ import { isMobile } from '@/utils/utils'
 import { debounce } from 'lodash-es'
 import LogTerm from './execution-component/LogTerm.vue'
 import LogMetric from './execution-component/LogMetric.vue'
+import LogPlan from './execution-component/LogPlan.vue'
 import LogSQLSample from './execution-component/LogSQLSample.vue'
 import LogCustomPrompt from './execution-component/LogCustomPrompt.vue'
 import LogDataQuery from './execution-component/LogDataQuery.vue'
@@ -120,6 +121,7 @@ defineExpose({
         <div v-if="expandIds.includes(index)" class="content">
           <LogTerm v-if="ele.operate_key === 'FILTER_TERMS'" :item="ele" :error="error" />
           <LogMetric v-else-if="ele.operate_key === 'FILTER_METRICS'" :item="ele" :error="error" />
+          <LogPlan v-else-if="ele.operate_key === 'QUERY_PLAN'" :item="ele" :error="error" />
           <LogSQLSample
             v-else-if="ele.operate_key === 'FILTER_SQL_EXAMPLE'"
             :item="ele"

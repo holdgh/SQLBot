@@ -53,6 +53,9 @@ class OperationEnum(Enum):
     # ========= 【改造标记 METRIC-CENTER】↓ 指标候选项召回日志（operate 列非原生 Enum 无 CHECK 约束，无需 DDL） =========
     FILTER_METRICS = '15'
     # ========= 【改造标记 METRIC-CENTER】↑ 枚举新增结束 =========
+    # ========= 【改造标记 QUERY-PLAN】↓ Query Plan 解析日志（operate 列非原生 Enum 无 CHECK 约束，无需 DDL 迁移） =========
+    QUERY_PLAN = '16'
+    # ========= 【改造标记 QUERY-PLAN】↑ 枚举新增结束 =========
 
 
 class ChatFinishStep(Enum):

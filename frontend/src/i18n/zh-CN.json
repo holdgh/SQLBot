@@ -865,7 +865,40 @@
       "EXECUTE_SQL": "执行 SQL",
       "GENERATE_PICTURE": "生成图片",
       "LLM_CONTEXT_FILTER": "大模型上下文过滤",
-      "FILTER_METRICS": "匹配指标"
+      "FILTER_METRICS": "匹配指标",
+      "QUERY_PLAN": "解析查询计划"
+    },
+    "plan": {
+      "failed": "计划解析失败（不影响主流程）",
+      "query_type": "查询类型",
+      "metrics": "指标",
+      "dimensions": "维度",
+      "filters": "过滤条件",
+      "time_range": "时间范围",
+      "current": "当期",
+      "previous": "对比期",
+      "calculation": "计算意图",
+      "confidence": "置信度",
+      "llm_self": "模型自评",
+      "recall_gap": "召回分差",
+      "hit_factor": "命中因子",
+      "need_clarification": "需澄清（存在歧义）",
+      "low_confidence": "查询计划置信度较低（{0}%），答案可能与预期不符，建议核对查询意图或补充时间范围",
+      "type": {
+        "aggregate": "聚合",
+        "detail": "明细",
+        "trend": "趋势",
+        "rank": "排名",
+        "compare": "对比"
+      },
+      "calc": {
+        "none": "无",
+        "yoy": "同比",
+        "qoq": "环比",
+        "share": "占比",
+        "growth": "增长",
+        "rank": "排名"
+      }
     },
     "log_system": "对话模板",
     "log_question": "本次提问",

@@ -119,21 +119,28 @@ def bm25_search(
     return scored[:top_k]
 
 
+def bm25_retrieve_with_scores(
+    query: str,
+    documents: Sequence[T],
+    text_getter: Callable[[T], str | None],
+) -> list[tuple[T, float]]:
+    """# ========= 【改造标记 QUERY-PLAN】↓ 同 bm25_retrieve 但保留原始分（Phase 4 置信度信号，不参与排序） ========="""
+    return bm25_search(
+        query=query,
+        documents=documents,
+        text_getter=text_getter,
+        top_k=settings.KEYWORD_RETRIEVAL_TOP_COUNT,
+        min_score=settings.KEYWORD_RETRIEVAL_MIN_SCORE,
+        k1=settings.KEYWORD_RETRIEVAL_BM25_K1,
+        b=settings.KEYWORD_RETRIEVAL_BM25_B,
+    )
+# ========= 【改造标记 QUERY-PLAN】↑ 新增结束 =========
+
+
 def bm25_retrieve(
     query: str,
     documents: Sequence[T],
     text_getter: Callable[[T], str | None],
 ) -> list[T]:
     """按 settings 配置执行 BM25 检索，仅返回命中的文档列表（供 curd 层使用）。"""
-    return [
-        doc
-        for doc, _score in bm25_search(
-            query=query,
-            documents=documents,
-            text_getter=text_getter,
-            top_k=settings.KEYWORD_RETRIEVAL_TOP_COUNT,
-            min_score=settings.KEYWORD_RETRIEVAL_MIN_SCORE,
-            k1=settings.KEYWORD_RETRIEVAL_BM25_K1,
-            b=settings.KEYWORD_RETRIEVAL_BM25_B,
-        )
-    ]
+    return [doc for doc, _score in bm25_retrieve_with_scores(query, documents, text_getter)]

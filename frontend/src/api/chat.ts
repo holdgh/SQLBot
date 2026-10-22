@@ -58,6 +58,7 @@ export class ChatRecord {
   regenerate_record_id?: number
   duration?: number
   total_tokens?: number
+  query_plan_hint?: { confidence: number }
 
   constructor()
   constructor(

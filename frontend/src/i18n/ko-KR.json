@@ -865,7 +865,40 @@
       "EXECUTE_SQL": "SQL 실행",
       "GENERATE_PICTURE": "이미지 생성",
       "LLM_CONTEXT_FILTER": "LLM 컨텍스트 필터",
-      "FILTER_METRICS": "지표 매칭"
+      "FILTER_METRICS": "지표 매칭",
+      "QUERY_PLAN": "쿼리 플랜 분석"
+    },
+    "plan": {
+      "failed": "플랜 분석 실패(메인 흐름에 영향 없음)",
+      "query_type": "쿼리 유형",
+      "metrics": "지표",
+      "dimensions": "차원",
+      "filters": "필터 조건",
+      "time_range": "기간",
+      "current": "당기",
+      "previous": "비교 기간",
+      "calculation": "계산 의도",
+      "confidence": "신뢰도",
+      "llm_self": "모델 자가 점수",
+      "recall_gap": "검색 점수 차이",
+      "hit_factor": "적중 요인",
+      "need_clarification": "확인 필요(모호성)",
+      "low_confidence": "쿼리 플랜 신뢰도가 낮습니다({0}%). 결과가 의도와 다를 수 있으니 쿼리 의도 또는 기간을 확인하세요",
+      "type": {
+        "aggregate": "집계",
+        "detail": "상세",
+        "trend": "추세",
+        "rank": "순위",
+        "compare": "비교"
+      },
+      "calc": {
+        "none": "없음",
+        "yoy": "전년 동기",
+        "qoq": "전월 대비",
+        "share": "비중",
+        "growth": "성장",
+        "rank": "순위"
+      }
     },
     "log_system": "대화 템플릿",
     "log_question": "현재 질문",

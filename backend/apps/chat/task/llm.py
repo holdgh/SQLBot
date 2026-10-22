@@ -80,6 +80,9 @@ from common.utils.utils import SQLBotLogUtil, extract_nested_json, prepare_for_o
 from common.utils.metric_validator import check_metric_rule_violations
 from common.utils.result_validator import validate_query_result
 # ========= 【改造标记 TRUST-VALIDATE】↑ 导入结束 =========
+# ========= 【改造标记 QUERY-PLAN】↓ Query Plan 语义解析层薄插桩导入（G1：llm.py 只加调用，实现落独立模块） =========
+from apps.chat.task.query_plan import build_query_plan, is_low_confidence
+# ========= 【改造标记 QUERY-PLAN】↑ 导入结束 =========
 
 warnings.filterwarnings("ignore")
 
@@ -1656,6 +1659,12 @@ class LLMService:
                 raise SQLBotDBConnectionError('Connect DB failed')
 
             # generate sql
+            # ========= 【改造标记 QUERY-PLAN】↓ Phase 4：SQL 生成前解析 Query Plan（纯旁路，模块内全兜底、失败返回 None 不阻断） =========
+            self.query_plan = build_query_plan(self, _session)
+            if is_low_confidence(self.query_plan):
+                yield 'data:' + orjson.dumps({'type': 'query-plan-hint',
+                                              'confidence': round(self.query_plan.confidence.metric_confidence, 4)}).decode() + '\n\n'
+            # ========= 【改造标记 QUERY-PLAN】↑ 插桩结束 =========
             sql_res = self.generate_sql(_session)
             full_sql_text = ''
             for chunk in sql_res:

@@ -4,6 +4,7 @@ import { Chat, chatApi, ChatInfo, type ChatMessage, ChatRecord, questionApi } fr
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import ChartBlock from '@/views/chat/chat-block/ChartBlock.vue'
 import JSONBig from 'json-bigint'
+import { useI18n } from 'vue-i18n'
 
 const props = withDefaults(
   defineProps<{
@@ -35,6 +36,8 @@ const emits = defineEmits([
   'update:currentChat',
   'update:currentChatId',
 ])
+
+const { t } = useI18n()
 
 const index = computed(() => {
   if (props.message?.index) {
@@ -84,6 +87,13 @@ const _loading = computed({
 
 const stopFlag = ref(false)
 
+const planHint = computed(() => {
+  if (index.value < 0) {
+    return undefined
+  }
+  return _currentChat.value.records[index.value]?.query_plan_hint
+})
+
 const sendMessage = async () => {
   stopFlag.value = false
   _loading.value = true
@@ -94,6 +104,7 @@ const sendMessage = async () => {
   }
 
   const currentRecord: ChatRecord = _currentChat.value.records[index.value]
+  currentRecord.query_plan_hint = undefined
 
   let error: boolean = false
   if (_currentChatId.value === undefined) {
@@ -216,6 +227,11 @@ const sendMessage = async () => {
                   _currentChat.value.datasource = data.id
                 }
                 break
+              case 'query-plan-hint':
+                currentRecord.query_plan_hint = { confidence: data.confidence }
+                _currentChat.value.records[index.value].query_plan_hint =
+                  currentRecord.query_plan_hint
+                break
               case 'finish':
                 emits('finish', currentRecord.id)
                 break
@@ -283,6 +299,9 @@ defineExpose({ sendMessage, index: () => index.value, stop })
 
 <template>
   <BaseAnswer v-if="message" :message="message" :reasoning-name="reasoningName" :loading="_loading">
+    <div v-if="planHint" class="plan-hint">
+      {{ t('chat.plan.low_confidence', [Math.round(planHint.confidence * 100)]) }}
+    </div>
     <ChartBlock
       v-model:show-label="showLabel"
       v-model:thousands-separator-list="enableThousandsSeparatorList"
@@ -301,4 +320,15 @@ defineExpose({ sendMessage, index: () => index.value, stop })
   </BaseAnswer>
 </template>
 
-<style scoped lang="less"></style>
+<style scoped lang="less">
+.plan-hint {
+  margin-top: 6px;
+  border: 1px solid #f5a623;
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: #fff8ec;
+  color: #b4720e;
+  font-size: 14px;
+  line-height: 22px;
+}
+</style>

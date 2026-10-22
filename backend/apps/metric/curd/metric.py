@@ -19,7 +19,7 @@ from common.core.deps import SessionDep, Trans
 from common.utils.dict_to_xml import dict_to_xml
 from common.utils.embedding_threads import run_save_metric_embeddings
 # ========= 【改造标记 RAG-KEYWORD】↓ 复用 BM25 关键词检索工具 =========
-from common.utils.keyword_retrieval import bm25_retrieve
+from common.utils.keyword_retrieval import bm25_retrieve_with_scores
 # ========= 【改造标记 RAG-KEYWORD】↑ 导入结束 =========
 
 METRIC_STATUS_ACTIVE = 'active'
@@ -694,6 +694,9 @@ def select_metric_by_question(session: SessionDep, question: str, oid: int, data
 
     _ids: list[int] = []
     _ordered: list[int] = []
+    # ========= 【改造标记 QUERY-PLAN】↓ 召回分数附着（决策①A：只附着不改序，_ordered 合并逻辑一字不动） =========
+    _score_map: dict[int, float] = {}
+    # ========= 【改造标记 QUERY-PLAN】↑ 附着容器结束 =========
 
     # ---- BM25 候选：指标名 + 别名（按 oid + 数据源 + 启用状态过滤） ----
     if settings.KEYWORD_RETRIEVAL_ENABLED:
@@ -740,9 +743,18 @@ def select_metric_by_question(session: SessionDep, question: str, oid: int, data
             text_map[row.id] = (text_map.get(row.id, "") + " " + (row.alias or "")).strip()
 
         documents = [{'id': _id, 'text': _text} for _id, _text in text_map.items()]
-        for doc in bm25_retrieve(question, documents, lambda row: row['text']):
+        # ========= 【改造标记 QUERY-PLAN】↓ BM25 分收集 + 路内 min-max 归一（归一仅用于附着，不参与排序） =========
+        _bm25_raw: dict[int, float] = {}
+        for doc, raw_score in bm25_retrieve_with_scores(question, documents, lambda row: row['text']):
             if doc['id'] not in _ordered:
                 _ordered.append(doc['id'])
+            _bm25_raw[doc['id']] = float(raw_score)
+        if _bm25_raw:
+            _lo, _hi = min(_bm25_raw.values()), max(_bm25_raw.values())
+            _span = _hi - _lo
+            for _mid, _s in _bm25_raw.items():
+                _score_map[_mid] = (_s - _lo) / _span if _span > 1e-12 else 1.0
+        # ========= 【改造标记 QUERY-PLAN】↑ BM25 附着结束 =========
 
     # ---- pgvector 召回检索文档 ----
     if settings.EMBEDDING_ENABLED:
@@ -762,6 +774,11 @@ def select_metric_by_question(session: SessionDep, question: str, oid: int, data
                 for row in results:
                     if row.metric_id not in _ordered:
                         _ordered.append(row.metric_id)
+                    # ========= 【改造标记 QUERY-PLAN】↓ pgvector similarity 附着（SQL 已返回，仅取值；两路同 id 取 max） =========
+                    _score_map[row.metric_id] = max(
+                        _score_map.get(row.metric_id, 0.0),
+                        max(0.0, min(1.0, float(row.similarity))))
+                    # ========= 【改造标记 QUERY-PLAN】↑ pgvector 附着结束 =========
 
             except Exception:
                 traceback.print_exc()
@@ -822,6 +839,9 @@ def select_metric_by_question(session: SessionDep, question: str, oid: int, data
             'aliases': aliases,
             'dimensions': dimensions,
             'dependencies': dependencies,
+            # ========= 【改造标记 QUERY-PLAN】↓ Phase 4 置信度信号（不进提示词 XML，见 get_metric_template） =========
+            'recall_score': round(_score_map.get(m.id, 0.0), 6),
+            # ========= 【改造标记 QUERY-PLAN】↑ recall_score 结束 =========
         })
 
     return metrics
@@ -862,7 +882,10 @@ def get_metric_template(session: SessionDep, question: str, oid: Optional[int] =
         oid = 1
     _results = select_metric_by_question(session, question, oid, datasource)
     if _results and len(_results) > 0:
-        metrics = to_xml_string(_results, 'metrics')
+        # ========= 【改造标记 QUERY-PLAN】↓ recall_score 为置信度信号，剥离后进提示词（提示词零变化） =========
+        metrics = to_xml_string([{k: v for k, v in r.items() if k != 'recall_score'} for r in _results],
+                                'metrics')
+        # ========= 【改造标记 QUERY-PLAN】↑ XML 剥离结束 =========
         template = get_base_metric_template().format(metrics=metrics)
         return template, _results
     else:
