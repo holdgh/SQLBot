@@ -10,6 +10,15 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 QueryType = Literal['aggregate', 'detail', 'trend', 'rank', 'compare']
 CalculationType = Literal['none', 'yoy', 'qoq', 'share', 'growth', 'rank']
 
+# 问题 13 方案 A（2026-10-23 拍板）：query_type 白名单别名归一表——仅收实证漂移值与
+# 同语义英文惯用形，不命中仍拒（保底不变）；枚举无合法空格，去空格归一确定性零误判。
+QUERY_TYPE_ALIASES = {
+    'trending': 'trend',
+    'comparison': 'compare',
+    'ranking': 'rank',
+    'aggregation': 'aggregate',
+}
+
 
 class TimeWindow(BaseModel):
     """时间窗：ISO 日期字符串（LLM 依据问题与当前日期生成）。"""
@@ -111,6 +120,41 @@ class QueryPlan(BaseModel):
     sub_queries: list['QueryPlan'] = Field(default_factory=list)
     confidence: Confidence = Field(default_factory=Confidence)
     ambiguity: Ambiguity = Field(default_factory=Ambiguity)
+
+    @model_validator(mode='before')
+    @classmethod
+    def _normalize_query_type(cls, data: Any) -> Any:
+        # 问题 13 方案 A（2026-10-23 拍板，实现层容错）：LLM 按题面英译惯性输出
+        # query_type 漂移值（实测 `tr end`/`trending`）→ lower+去内部空格+白名单别名
+        # 归一到五枚举；不命中保持原值交给 strict 校验拒绝（失败回退语义不变）。
+        if isinstance(data, dict):
+            qt = data.get('query_type')
+            if isinstance(qt, str):
+                norm = ''.join(qt.strip().lower().split())
+                norm = QUERY_TYPE_ALIASES.get(norm, norm)
+                if norm != qt:
+                    data = {**data, 'query_type': norm}
+        return data
+
+    @model_validator(mode='before')
+    @classmethod
+    def _normalize_empty_time_range(cls, data: Any) -> Any:
+        # 问题 12 方案 A（2026-10-23 拍板，实现层容错）：LLM 偶发输出空壳
+        # time_range（current 为 null 或缺 start/end）→ 按案2「时间未确定=省略整个字段」
+        # 语义整体归一为 None，避免 strict 校验失败将 plan 误判 failed。
+        if isinstance(data, dict):
+            tr = data.get('time_range')
+            if isinstance(tr, dict):
+                cur = tr.get('current')
+                cur_empty = cur is None or (isinstance(cur, dict) and (not cur.get('start') or not cur.get('end')))
+                prev = tr.get('previous')
+                prev_empty = prev is not None and (not isinstance(prev, dict)
+                                                   or (not prev.get('start') or not prev.get('end')))
+                if cur_empty:
+                    data = {**data, 'time_range': None}
+                elif prev_empty:
+                    data = {**data, 'time_range': {**tr, 'previous': None}}
+        return data
 
 
 QueryPlan.model_rebuild()

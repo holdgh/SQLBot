@@ -24,7 +24,7 @@ from common.utils.utils import SQLBotLogUtil, extract_nested_json
 QUERY_PLAN_SYSTEM_PROMPT = """你是查询理解器：把用户问题解析为 Query Plan。只输出一个 JSON 对象，禁止任何其他文字。
 
 字段与规则：
-- query_type: aggregate(聚合) | detail(明细) | trend(趋势) | rank(排名) | compare(对比)
+- query_type: aggregate(聚合) | detail(明细) | trend(趋势) | rank(排名) | compare(对比)（严格五选一**逐字**输出，禁止 trending/comparison 等英文变体、禁止空格或大小写变化）
 - metrics: [{metric_name: 指标名(必填), aggregation: sum/count/avg/max/min(可选)}]，至少 1 个
 - dimensions: 分组维度名数组（无则 []）
 - filters: [{field: 字段名, operator: =|!=|>|<|>=|<=|in|like, value: 值, logic: and|or(可选)}]
