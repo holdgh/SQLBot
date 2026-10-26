@@ -166,7 +166,7 @@ class Settings(BaseSettings):
     # ========= 【改造标记 TRUST-VALIDATE】↑ 可信校验层配置结束 =========
 
     # ========= 【改造标记 QUERY-PLAN】↓ Query Plan 语义解析层配置（Phase 4） =========
-    QUERY_PLAN_ENABLED: bool = True  # 默认 False=不调用 plan 生成、零额外 LLM 开销（详情页无 QUERY_PLAN 步骤）
+    QUERY_PLAN_ENABLED: bool = False  # 默认 False=不调用 plan 生成、零额外 LLM 开销（详情页无 QUERY_PLAN 步骤）
     QUERY_PLAN_LOW_CONFIDENCE_THRESHOLD: float = 0.6  # 低置信提示阈值（决策②b：结果区提示条触发条件）
     # ========= 【改造标记 QUERY-PLAN】↑ Query Plan 配置结束 =========
 

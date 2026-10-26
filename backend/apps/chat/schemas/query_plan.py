@@ -3,20 +3,21 @@
 权威规格：v201改造方案_v1.2.md Phase 4 章节；方案分析见 selfdoc/v201/detail/phase4-query-plan方案分析.md。
 strict 校验：extra='forbid' + 枚举字面量；校验失败 = plan 回退（不阻断主流程）。
 """
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 QueryType = Literal['aggregate', 'detail', 'trend', 'rank', 'compare']
 CalculationType = Literal['none', 'yoy', 'qoq', 'share', 'growth', 'rank']
-
-# 问题 13 方案 A（2026-10-23 拍板）：query_type 白名单别名归一表——仅收实证漂移值与
-# 同语义英文惯用形，不命中仍拒（保底不变）；枚举无合法空格，去空格归一确定性零误判。
+# 五枚举值元组（自动与 QueryType 同步）；五值互不为前缀——前缀归一确定性零误判的依据
+QUERY_TYPES: tuple[str, ...] = get_args(QueryType)
+# 去尾变形派生（词干变化非前缀关系，compare→comparison、aggregate→aggregation，
+# 前缀匹配覆盖不了）——仅收此两族（含复数）；trend 系与 ranking/details 等由前缀覆盖
 QUERY_TYPE_ALIASES = {
-    'trending': 'trend',
     'comparison': 'compare',
-    'ranking': 'rank',
+    'comparisons': 'compare',
     'aggregation': 'aggregate',
+    'aggregations': 'aggregate',
 }
 
 
@@ -124,14 +125,23 @@ class QueryPlan(BaseModel):
     @model_validator(mode='before')
     @classmethod
     def _normalize_query_type(cls, data: Any) -> Any:
-        # 问题 13 方案 A（2026-10-23 拍板，实现层容错）：LLM 按题面英译惯性输出
-        # query_type 漂移值（实测 `tr end`/`trending`）→ lower+去内部空格+白名单别名
-        # 归一到五枚举；不命中保持原值交给 strict 校验拒绝（失败回退语义不变）。
+        # 问题 13 方案 1（2026-10-23 拍板，2026-10-26 实施）：LLM（弱模型）按题面英译
+        # 惯性输出 query_type 漂移（实测 tr end/trending/trends 全在 trend 家族）→
+        # 语义归一收口，三级：lower+去内部空格 → 精确命中用；未命中过词干变形别名表
+        # （comparison/aggregation）；仍未命中取「枚举值是输入前缀」的合法值（五枚举
+        # 互不为前缀，确定性零误判）；都不中保持原值交 strict 拒绝（失败回退语义不变）。
+        # 兼容弱模型与将来强模型。
         if isinstance(data, dict):
             qt = data.get('query_type')
             if isinstance(qt, str):
                 norm = ''.join(qt.strip().lower().split())
-                norm = QUERY_TYPE_ALIASES.get(norm, norm)
+                if norm not in QUERY_TYPES:
+                    norm = QUERY_TYPE_ALIASES.get(norm, norm)
+                if norm not in QUERY_TYPES:
+                    for legal in QUERY_TYPES:
+                        if norm.startswith(legal):
+                            norm = legal
+                            break
                 if norm != qt:
                     data = {**data, 'query_type': norm}
         return data
