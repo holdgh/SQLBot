@@ -866,7 +866,8 @@
       "GENERATE_PICTURE": "生成图片",
       "LLM_CONTEXT_FILTER": "大模型上下文过滤",
       "FILTER_METRICS": "匹配指标",
-      "QUERY_PLAN": "解析查询计划"
+      "QUERY_PLAN": "解析查询计划",
+      "DSL_COMPILE": "DSL 编译分流"
     },
     "plan": {
       "failed": "计划解析失败（不影响主流程）",
@@ -898,6 +899,34 @@
         "share": "占比",
         "growth": "增长",
         "rank": "排名"
+      }
+    },
+    "dsl": {
+      "route": "编译轨道",
+      "route_dsl": "DSL 编译轨",
+      "route_llm_fallback": "LLM 生成轨（回退）",
+      "fallback_reason": "回退原因",
+      "table": "数据表",
+      "chart_type": "图表类型",
+      "sql": "编译 SQL",
+      "agg_mismatch": "聚合口径差异（以指标定义为准）",
+      "mismatch_plan": "计划",
+      "mismatch_resolved": "实际",
+      "reason": {
+        "no_plan": "无查询计划（解析失败或未启用）",
+        "scope": "超出首期编译范围（对比/排名/占比/多表等，走 LLM 轨道）",
+        "metric_resolve": "指标解析失败（不存在或归属数据源不符）",
+        "not_atomic": "指标非原子类型（本期不支持，走 LLM 轨道）",
+        "multi_table": "多表（本期仅单表编译，走 LLM 轨道）",
+        "dimension_resolve": "维度解析失败（不存在或列缺失）",
+        "relation": "指标与维度无启用关联（metric_dimension_relation）",
+        "filter_resolve": "过滤字段解析失败（非维度且非表内字段）",
+        "operator": "过滤操作符或取值不合法",
+        "no_time_range": "时间范围未确定",
+        "no_time_field": "指标未配置时间字段",
+        "dialect": "数据源方言不在首期白名单（mysql/postgresql）",
+        "self_check": "编译自检未通过（表越权或解析失败）",
+        "internal_error": "编译器内部错误（已自动回退）"
       }
     },
     "log_system": "对话模板",

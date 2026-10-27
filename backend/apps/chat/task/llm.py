@@ -83,6 +83,9 @@ from common.utils.result_validator import validate_query_result
 # ========= 【改造标记 QUERY-PLAN】↓ Query Plan 语义解析层薄插桩导入（G1：llm.py 只加调用，实现落独立模块） =========
 from apps.chat.task.query_plan import build_query_plan, is_low_confidence
 # ========= 【改造标记 QUERY-PLAN】↑ 导入结束 =========
+# ========= 【改造标记 DSL-COMPILE】↓ Phase 5 SQL Builder 薄插桩导入（G1：llm.py 只加调用，实现落独立模块） =========
+from apps.chat.task.sql_builder import compile_plan_to_answer
+# ========= 【改造标记 DSL-COMPILE】↑ 导入结束 =========
 
 warnings.filterwarnings("ignore")
 
@@ -1665,14 +1668,25 @@ class LLMService:
                 yield 'data:' + orjson.dumps({'type': 'query-plan-hint',
                                               'confidence': round(self.query_plan.confidence.metric_confidence, 4)}).decode() + '\n\n'
             # ========= 【改造标记 QUERY-PLAN】↑ 插桩结束 =========
-            sql_res = self.generate_sql(_session)
-            full_sql_text = ''
-            for chunk in sql_res:
-                full_sql_text += chunk.get('content')
+            # ========= 【改造标记 DSL-COMPILE】↓ Phase 5：SQL 生成分流（编译轨成功=合成 answer 替换 full_sql_text；失败=None 走原 generate_sql） =========
+            dsl_answer = compile_plan_to_answer(self, _session, self.query_plan)
+            # ========= 【改造标记 DSL-COMPILE】↑ 分流调用结束 =========
+            if dsl_answer is not None:
+                # 编译轨：LLM 生成整段跳过；SSE 契约与原轨一致（一次 sql-result + 一次 info）
+                full_sql_text = dsl_answer
                 if in_chat:
                     yield 'data:' + orjson.dumps(
-                        {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
+                        {'content': dsl_answer, 'reasoning_content': '',
                          'type': 'sql-result'}).decode() + '\n\n'
+            else:
+                sql_res = self.generate_sql(_session)
+                full_sql_text = ''
+                for chunk in sql_res:
+                    full_sql_text += chunk.get('content')
+                    if in_chat:
+                        yield 'data:' + orjson.dumps(
+                            {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
+                             'type': 'sql-result'}).decode() + '\n\n'
             if in_chat:
                 yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'sql generated'}).decode() + '\n\n'
             # filter sql
@@ -1721,11 +1735,18 @@ class LLMService:
                 )
 
             # ========= 【改造标记 TRUST-VALIDATE】↓ 3-A 口径校验（告警旁路，G2/G4 不阻断） =========
-            check_metric_rule_violations(session=_session, sql=sql,
-                                          metric_candidates=getattr(self, '_metric_candidates', None),
-                                          ds_id=self.ds.id, ds_type=self.ds.type,
-                                          record_id=self.record.id)
+            violations = check_metric_rule_violations(session=_session, sql=sql,
+                                                      metric_candidates=getattr(self, '_metric_candidates', None),
+                                                      ds_id=self.ds.id, ds_type=self.ds.type,
+                                                      record_id=self.record.id)
             # ========= 【改造标记 TRUST-VALIDATE】↑ 3-A 口径校验插桩结束 =========
+            # ========= 【改造标记 DSL-COMPILE】↓ 3-A 阻断消费（拍板④：violations 非空 ∧ enforce 开 ∧ DSL 编译轨 → 阻断；LLM 轨道保持告警不变） =========
+            if violations and settings.METRIC_RULE_ENFORCE and getattr(self, '_dsl_compiled', False):
+                details = '；'.join(str(v.get('detail') or v.get('type') or v) for v in violations)
+                raise SingleMessageError(
+                    f"口径校验未通过，已阻断本次查询（DSL 编译轨 + METRIC_RULE_ENFORCE）：{details}"
+                )
+            # ========= 【改造标记 DSL-COMPILE】↑ 阻断消费结束 =========
 
             if ((not self.current_assistant or is_page_embedded) and is_normal_user(
                     self.current_user)) or use_dynamic_ds:

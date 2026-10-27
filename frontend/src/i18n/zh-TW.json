@@ -866,7 +866,8 @@
       "GENERATE_PICTURE": "產生圖片",
       "LLM_CONTEXT_FILTER": "大模型上下文過濾",
       "FILTER_METRICS": "匹配指標",
-      "QUERY_PLAN": "解析查詢計畫"
+      "QUERY_PLAN": "解析查詢計畫",
+      "DSL_COMPILE": "DSL 編譯分流"
     },
     "plan": {
       "failed": "計畫解析失敗（不影響主流程）",
@@ -898,6 +899,34 @@
         "share": "佔比",
         "growth": "增長",
         "rank": "排名"
+      }
+    },
+    "dsl": {
+      "route": "編譯軌道",
+      "route_dsl": "DSL 編譯軌",
+      "route_llm_fallback": "LLM 生成軌（回退）",
+      "fallback_reason": "回退原因",
+      "table": "資料表",
+      "chart_type": "圖表類型",
+      "sql": "編譯 SQL",
+      "agg_mismatch": "聚合口徑差異（以指標定義為準）",
+      "mismatch_plan": "計畫",
+      "mismatch_resolved": "實際",
+      "reason": {
+        "no_plan": "無查詢計畫（解析失敗或未啟用）",
+        "scope": "超出首期編譯範圍（對比/排名/佔比/多表等，走 LLM 軌道）",
+        "metric_resolve": "指標解析失敗（不存在或所屬資料源不符）",
+        "not_atomic": "指標非原子類型（本期不支援，走 LLM 軌道）",
+        "multi_table": "多表（本期僅單表編譯，走 LLM 軌道）",
+        "dimension_resolve": "維度解析失敗（不存在或欄位缺失）",
+        "relation": "指標與維度無啟用關聯（metric_dimension_relation）",
+        "filter_resolve": "過濾欄位解析失敗（非維度且非表內欄位）",
+        "operator": "過濾運算子或取值不合法",
+        "no_time_range": "時間範圍未確定",
+        "no_time_field": "指標未配置時間欄位",
+        "dialect": "資料源方言不在首期白名單（mysql/postgresql）",
+        "self_check": "編譯自檢未通過（表越權或解析失敗）",
+        "internal_error": "編譯器內部錯誤（已自動回退）"
       }
     },
     "log_system": "對話範本",

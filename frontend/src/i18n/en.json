@@ -866,7 +866,8 @@
       "GENERATE_PICTURE": "Generate Picture",
       "LLM_CONTEXT_FILTER": "LLM Context Filter",
       "FILTER_METRICS": "Match Metrics",
-      "QUERY_PLAN": "Query Plan Parsing"
+      "QUERY_PLAN": "Query Plan Parsing",
+      "DSL_COMPILE": "DSL Compile Routing"
     },
     "plan": {
       "failed": "Plan parsing failed (main flow unaffected)",
@@ -898,6 +899,34 @@
         "share": "Share",
         "growth": "Growth",
         "rank": "Rank"
+      }
+    },
+    "dsl": {
+      "route": "Compile Route",
+      "route_dsl": "DSL compiled",
+      "route_llm_fallback": "LLM generated (fallback)",
+      "fallback_reason": "Fallback Reason",
+      "table": "Table",
+      "chart_type": "Chart Type",
+      "sql": "Compiled SQL",
+      "agg_mismatch": "Aggregation mismatch (metric definition prevails)",
+      "mismatch_plan": "Planned",
+      "mismatch_resolved": "Resolved",
+      "reason": {
+        "no_plan": "No query plan (parsing failed or disabled)",
+        "scope": "Out of first-phase compile scope (compare/rank/share/multi-table; falls back to LLM)",
+        "metric_resolve": "Metric resolution failed (not found or wrong datasource)",
+        "not_atomic": "Metric is not atomic (unsupported this phase; falls back to LLM)",
+        "multi_table": "Multi-table (single-table only this phase; falls back to LLM)",
+        "dimension_resolve": "Dimension resolution failed (not found or column missing)",
+        "relation": "No enabled metric-dimension relation (metric_dimension_relation)",
+        "filter_resolve": "Filter field resolution failed (not a dimension or table column)",
+        "operator": "Invalid filter operator or value",
+        "no_time_range": "Time range not determined",
+        "no_time_field": "Metric has no time field configured",
+        "dialect": "Datasource dialect not in first-phase whitelist (mysql/postgresql)",
+        "self_check": "Compile self-check failed (unauthorized table or parse failure)",
+        "internal_error": "Compiler internal error (auto fallback)"
       }
     },
     "log_system": "Conversation Template",

@@ -866,7 +866,8 @@
       "GENERATE_PICTURE": "이미지 생성",
       "LLM_CONTEXT_FILTER": "LLM 컨텍스트 필터",
       "FILTER_METRICS": "지표 매칭",
-      "QUERY_PLAN": "쿼리 플랜 분석"
+      "QUERY_PLAN": "쿼리 플랜 분석",
+      "DSL_COMPILE": "DSL 컴파일 분기"
     },
     "plan": {
       "failed": "플랜 분석 실패(메인 흐름에 영향 없음)",
@@ -898,6 +899,34 @@
         "share": "비중",
         "growth": "성장",
         "rank": "순위"
+      }
+    },
+    "dsl": {
+      "route": "컴파일 경로",
+      "route_dsl": "DSL 컴파일 경로",
+      "route_llm_fallback": "LLM 생성 경로(폴백)",
+      "fallback_reason": "폴백 원인",
+      "table": "데이터 테이블",
+      "chart_type": "차트 유형",
+      "sql": "컴파일 SQL",
+      "agg_mismatch": "집계 기준 차이(지표 정의 우선)",
+      "mismatch_plan": "계획",
+      "mismatch_resolved": "실제",
+      "reason": {
+        "no_plan": "쿼리 플랜 없음(파싱 실패 또는 비활성)",
+        "scope": "1차 컴파일 범위 밖(비교/순위/비중/다중 테이블 등, LLM 경로로 폴백)",
+        "metric_resolve": "지표 해석 실패(없거나 데이터 소스 불일치)",
+        "not_atomic": "지표가 원자가 아님(이번 단계 미지원, LLM 경로로 폴백)",
+        "multi_table": "다중 테이블(이번 단계 단일 테이블만 컴파일, LLM 경로로 폴백)",
+        "dimension_resolve": "차원 해석 실패(없거나 컬럼 누락)",
+        "relation": "지표-차원 활성 연관 없음(metric_dimension_relation)",
+        "filter_resolve": "필터 필드 해석 실패(차원·테이블 컬럼 아님)",
+        "operator": "필터 연산자 또는 값이 부적법",
+        "no_time_range": "기간 미확정",
+        "no_time_field": "지표에 시간 필드 미설정",
+        "dialect": "데이터 소스 방언이 1차 화이트리스트에 없음(mysql/postgresql)",
+        "self_check": "컴파일 자체 점검 실패(테이블 권한 초과 또는 파싱 실패)",
+        "internal_error": "컴파일러 내부 오류(자동 폴백)"
       }
     },
     "log_system": "대화 템플릿",

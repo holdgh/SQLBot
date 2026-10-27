@@ -14,18 +14,24 @@
 ④ enforce 代码完整实现、走查临时开实测；
 ⑤ aggregation 仲裁以 metric_definition 固化口径为准 + op17 记差异（G3）。
 """
-from typing import Any, Optional
+from typing import Any
 
 import orjson
 import sqlglot
-from sqlglot import exp
+from sqlalchemy import select as sa_select
 from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Session
+from sqlglot import exp
 
 from apps.chat.curd.chat import end_log, start_log
 from apps.chat.models.chat_model import OperationEnum
 from apps.chat.schemas.query_plan import QueryPlan
 from apps.db.db import get_sqlglot_dialect
+from apps.metric.models.metric_model import (
+    Dimension,
+    MetricDefinition,
+    MetricDimensionRelation,
+)
 from common.core.config import settings
 from common.utils.utils import SQLBotLogUtil
 
@@ -55,18 +61,15 @@ _TIME_DIM_WORDS = {'月份', '月度', '年月', '统计日期', '日期', '时�
                    'date', 'month', 'year', 'time'}
 
 
-def _fail(route: str, reason: str) -> dict:
-    return {'route': route, 'reason': reason}
+class _Fallback(Exception):
+    """编译轨内部回退信号：带 reason 码，由入口统一记 op17 后返回 None。"""
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
 
 
-def _load_metrics(session: Session) -> list:
-    from apps.metric.models.metric_model import MetricDefinition
-    return list(session.execute(
-        sqlglot and __import__('sqlalchemy', fromlist=['select']).select(MetricDefinition)
-    ).scalars().all())
-
-
-def _metric_matches(name: str, ds_id: Any, metrics: list) -> Optional[Any]:
+def _metric_matches(name: str, ds_id: Any, metrics: list) -> Any | None:
     """按 metric_name（ci）解析；多 ds 命中优先当前 ds；空名/无命中 → None。"""
     target = (name or '').strip().lower()
     if not target:
@@ -88,10 +91,7 @@ def _metric_in_ds(metric: Any, ds_id: Any) -> bool:
 
 def _resolve_dims(session: Session, ds_id: Any) -> dict[str, Any]:
     """维度名与别名（ci）→ Dimension 行索引。"""
-    from apps.metric.models.metric_model import Dimension
-    rows = session.execute(
-        __import__('sqlalchemy', fromlist=['select']).select(Dimension)
-    ).scalars().all()
+    rows = session.execute(sa_select(Dimension)).scalars().all()
     index: dict[str, Any] = {}
     for d in rows:
         if d.source_ds_id is not None and d.source_ds_id != ds_id:
@@ -105,21 +105,20 @@ def _resolve_dims(session: Session, ds_id: Any) -> dict[str, Any]:
 
 
 def _resolve_filter_column(field: str, table: str, session: Session,
-                           dim_index: dict[str, Any]) -> Optional[str]:
+                           dim_index: dict[str, Any]) -> str | None:
     """filter field → 列名：① 维度名/别名（同表）② 该表真实列名（core_field）。失败 → None。"""
     f = (field or '').strip()
     if not f:
         return None
     dim = dim_index.get(f.lower())
     if dim is not None:
-        col = dim.column_name or dim.source_table and None
         col = dim.column_name
         if not col:
             return None
         if dim.source_table and dim.source_table != table:
             return None
         return col
-    # 真实列直配（术语库为纯文本词无结构映射，首期不作解析源——方案 5 边界注记）
+    # 真实列直配（术语库为纯文本词无结构映射，首期不作解析源——方案边界注记）
     try:
         rows = session.execute(sa_text(
             'select f.field_name from core_field f '
@@ -133,7 +132,7 @@ def _resolve_filter_column(field: str, table: str, session: Session,
     return None
 
 
-def _normalize_operator(op: str) -> Optional[str]:
+def _normalize_operator(op: str) -> str | None:
     return _OPERATOR_ALIASES.get((op or '').strip().lower())
 
 
@@ -144,7 +143,7 @@ def _lit(v: Any) -> exp.Literal:
     return exp.Literal.string(str(v))
 
 
-def _filter_condition(item: Any, column: str) -> Optional[exp.Condition]:
+def _filter_condition(item: Any, column: str) -> exp.Condition | None:
     """单个 FilterItem → sqlglot 条件；值/operator 不合法 → None（调用方回退）。"""
     op = _normalize_operator(item.operator)
     if op is None:
@@ -180,7 +179,7 @@ def _filter_condition(item: Any, column: str) -> Optional[exp.Condition]:
             'ge': exp.GTE, 'le': exp.LTE}[op](this=col, expression=rhs)
 
 
-def _month_expr(column: str, read_dialect: Optional[str]) -> exp.Expression:
+def _month_expr(column: str, read_dialect: str | None) -> exp.Expression:
     """月份提取表达式：MySQL 直接 SUBSTRING；PG 走 CAST(col AS text)（拍板②方言内通用）。"""
     if read_dialect == 'postgres':
         snippet = 'SUBSTRING(CAST(x AS text), 1, 7)'
@@ -200,14 +199,16 @@ def _chart_type(query_type: str, has_dims: bool) -> str:
     return 'bar' if has_dims else 'table'
 
 
-def _resolve_scope(plan: QueryPlan) -> Optional[str]:
+def _resolve_scope(plan: QueryPlan) -> str | None:
     """拍板① 范围判定（纯结构，不碰库）。返回 None=通过，否则 reason 码。"""
     if plan.query_type not in COMPILED_QUERY_TYPES:
         return 'scope'
     if plan.calculation.type != 'none':
         return 'scope'
-    if plan.time_range is None or plan.time_range.previous is not None:
-        return 'no_time_range' if plan.time_range is None else 'scope'
+    if plan.time_range is None:
+        return 'no_time_range'
+    if plan.time_range.previous is not None:
+        return 'scope'
     if plan.query_type == 'detail' and not plan.dimensions:
         return 'scope'
     if plan.query_type == 'trend':
@@ -219,13 +220,18 @@ def _resolve_scope(plan: QueryPlan) -> Optional[str]:
     return None
 
 
-def _compile(plan: QueryPlan, service, session: Session, metrics: list,
-             dim_index: dict[str, Any], dialect: str) -> tuple[str, dict]:
-    """解析 + sqlglot AST 组装（禁字符串拼接）。返回 (sql, meta)；不满足 → raise _Fallback(reason)。"""
-    class _Fallback(Exception):
-        def __init__(self, reason: str):
-            self.reason = reason
+def _relation_enabled(session: Session, metric_id: Any, dimension_id: Any) -> bool:
+    row = session.execute(sa_select(MetricDimensionRelation).where(
+        MetricDimensionRelation.metric_id == metric_id,
+        MetricDimensionRelation.dimension_id == dimension_id,
+        MetricDimensionRelation.enabled == True,  # noqa: E712
+    )).scalars().first()
+    return row is not None
 
+
+def _compile(plan: QueryPlan, service, session: Session, metrics: list,
+             dim_index: dict[str, Any]) -> tuple[str, dict]:
+    """解析 + sqlglot AST 组装（禁字符串拼接）。返回 (sql, meta)；不满足 → raise _Fallback(reason)。"""
     # ---- 指标解析（G3 仲裁：固化口径优先，plan aggregation 差异记 meta 不回退） ----
     agg_mismatch: list[dict] = []
     resolved: list[dict] = []
@@ -250,7 +256,7 @@ def _compile(plan: QueryPlan, service, session: Session, metrics: list,
     table = next(iter(tables))
     metric0 = resolved[0]['row']
     ds_type = (service.ds.type or '').lower()
-    read_dialect = 'mysql' if dialect == 'mysql' else ('postgres' if dialect == 'postgres' else None)
+    read_dialect = get_sqlglot_dialect(ds_type)
 
     # ---- 维度解析（trend 特例：时间词维度按 time_field 月分组） ----
     dim_cols: list[str] = []
@@ -284,32 +290,31 @@ def _compile(plan: QueryPlan, service, session: Session, metrics: list,
             raise _Fallback('operator')
         conditions.append(cond)
 
-    # ---- AST 组装 ----
+    # ---- AST 组装（sqlglot>=20 builder 不可变：每步必须重赋值） ----
     select = exp.Select()
     if plan.query_type == 'trend':
-        select.select(exp.alias_(_month_expr(metric0.time_field, read_dialect), MONTH_ALIAS))
+        select = select.select(exp.alias_(_month_expr(metric0.time_field, read_dialect), MONTH_ALIAS))
     for r in resolved:
         agg_cls = AGG_FUNCTIONS[r['agg']]
         expr = agg_cls(this=exp.column(r['row'].source_column))
-        select.select(exp.alias_(expr, r['row'].metric_name))
+        select = select.select(exp.alias_(expr, r['row'].metric_name))
     for c in dim_cols:
-        select.select(exp.column(c))
-    select.from_(exp.table_(table))
-    select.where(*conditions)
+        select = select.select(exp.column(c))
+    select = select.from_(exp.table_(table))
+    select = select.where(*conditions)
     if plan.query_type == 'trend':
-        select.group_by(exp.column(MONTH_ALIAS))
-        select.order(exp.column(MONTH_ALIAS))
-    elif dim_cols:
-        select.group_by(*[exp.column(c) for c in dim_cols])
+        select = select.group_by(exp.column(MONTH_ALIAS)).order_by(exp.column(MONTH_ALIAS))
+    elif plan.query_type == 'aggregate' and dim_cols:
+        # detail 是裸列明细，不聚合不分组
+        select = select.group_by(*[exp.column(c) for c in dim_cols])
     if getattr(service, 'enable_sql_row_limit', False):
-        select.limit(ROW_LIMIT)
+        select = select.limit(ROW_LIMIT)
 
-    gen_dialect = get_sqlglot_dialect(ds_type)
-    sql_out = select.sql(dialect=gen_dialect)
+    sql_out = select.sql(dialect=read_dialect)
 
-    # ---- 自检：可解析 ∧ 表白名单（失败 → 回退而非抛错） ----
+    # ---- 自检：可解析 ∧ 表白名单（失败 → 回退而非抛错；避免 import llm 的循环依赖） ----
     try:
-        parsed = sqlglot.parse_one(sql_out, read=gen_dialect)
+        parsed = sqlglot.parse_one(sql_out, read=read_dialect)
         used = {t.name for t in parsed.find_all(exp.Table)}
     except Exception as e:  # noqa: BLE001
         raise _Fallback('self_check') from e
@@ -324,19 +329,8 @@ def _compile(plan: QueryPlan, service, session: Session, metrics: list,
     return sql_out, meta
 
 
-def _relation_enabled(session: Session, metric_id: Any, dimension_id: Any) -> bool:
-    from apps.metric.models.metric_model import MetricDimensionRelation
-    from sqlalchemy import select as sa_select
-    row = session.execute(sa_select(MetricDimensionRelation).where(
-        MetricDimensionRelation.metric_id == metric_id,
-        MetricDimensionRelation.dimension_id == dimension_id,
-        MetricDimensionRelation.enabled == True,  # noqa: E712
-    )).scalars().first()
-    return row is not None
-
-
 def compile_plan_to_answer(service, _session: Session,
-                           plan: Optional[QueryPlan]) -> Optional[str]:
+                           plan: QueryPlan | None) -> str | None:
     """Plan 分流入口：编译成功返回合成 answer（str），否则 None（走 generate_sql）。
 
     service: llm service 实例（读 ds/table_name_list/enable_sql_row_limit/record）；
@@ -356,12 +350,9 @@ def compile_plan_to_answer(service, _session: Session,
             if ds_type not in DIALECT_WHITELIST:
                 reason = 'dialect'
         if reason is None:
-            from sqlalchemy import select as sa_select
-            from apps.metric.models.metric_model import MetricDefinition
             metrics = list(_session.execute(sa_select(MetricDefinition)).scalars().all())
             dim_index = _resolve_dims(_session, service.ds.id)
-            dialect = 'mysql' if (service.ds.type or '').lower() == 'mysql' else 'postgres'
-            sql_out, compiled_meta = _compile(plan, service, _session, metrics, dim_index, dialect)
+            sql_out, compiled_meta = _compile(plan, service, _session, metrics, dim_index)
             answer = orjson.dumps({
                 'success': True,
                 'sql': sql_out,
