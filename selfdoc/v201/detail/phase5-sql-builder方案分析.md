@@ -122,7 +122,7 @@ E5 执行详情 op17 步骤四语言显示正常。
 
 ## 11. 实施执行记录（分步执行，逐条随记）
 
-> 实施启动 2026-10-27（方案 5 点拍板后动手）。当前进度：**Step 1/2/3/5(后端)/6 完成；Step 4（前端）与 Step 5 前端 build、E1~E5 走查待做**。
+> 实施启动 2026-10-27（方案 5 点拍板后动手）。当前进度：**Step 1/2/3/4/5/6 全部完成；E1~E5 用户走查进行中（E1 首测遇 1 bug 已修，待复测）**。
 
 ### Step 1：开关与枚举（✅ 2026-10-27）
 
@@ -160,6 +160,21 @@ E5 执行详情 op17 步骤四语言显示正常。
 
 - 进展文档：新增第八节（Phase 5：8.1 方案拍板 / 8.2 改动清单 / 8.3 技术验证 / 8.4 验收清单 E1~E5 ⏳）；原八/九重编号为九/十并同步 6 处引用；1.1/1.2/头部/接续指引/尾部全部同步。
 - v1.2 第九节：事实边界更新（Phase 5 已实施待走查）；步骤 10/11a/13 加已实施注记（11a 顺带修正 `default_column`→`column_name` 遗留名）；9.4 边界注记同步。
+
+### 走查记录（逐条随记）
+
+**E1 首测问题 #1（2026-10-27）：`KeyError` @ check_sql——已修复（方案 A 拍板）**
+
+- **现象**：问「2024年12月上海接待黑龙江游客数量是多少」，DSL 编译分流步骤正常（编译 SQL 正确），但 `run_task` L1720 调 `check_sql` 抛 `KeyError`。
+- **定性**：`check_sql` L1373 无条件取 `self.current_logs[GENERATE_SQL]`，该键由 `generate_sql` 内登记；DSL 分支跳过 `generate_sql` → 键缺失。合成 answer 只补了「数据」，未补 `generate_sql` 的日志/落库副作用。同根因还有两处：`check_save_sql`（L1443 同键消费）、`save_sql_answer` 落 `chat_record.answer` 缺失。
+- **处置（案 A，DSL 分支内补齐，下游共享函数零改动）**：llm.py DSL 成功分支追加 ① `start_log`+`end_log` 合成 GENERATE_SQL 日志（`human=用户问题 / ai=合成 answer`，无 LLM 流耗时≈0s）；② `save_sql_answer({'content': dsl_answer})`（与 generate_sql L1195 同构）。备选 B（`check_sql` 改 `.get` 容错）已否决：改共享函数且掩盖 LLM 轨道真实漏登记错误。
+- **验证**：`py_compile` + ruff 错误级全过；E1 复测待用户执行。
+- **E1 复测问题 #2（卡片空白，方案 A1，2026-10-28 已修）**：「生成 SQL」卡片无内容——`LogWithAi` 无条件取 `type:'system'` 记录，DSL 合成 messages 无 system → 渲染中断。修：`LogWithAi` system 段 v-if 容错 + 卡片 ai content 改用编译 SQL（独立于 `check_sql` 的 answer JSON 输入）。
+- **E1 复测问题 #3（等值查空，方案 B1，2026-10-28 已修）**：`省内外来源地区='黑龙江'` vs 库存 `'黑龙江省'` 查空（LLM 轨 LIKE 可查出，两轨不一致）。修：文本 eq → `LIKE '%值%'`（`_is_text_like_value`：数字/日期/布尔/含 `%_\` 回退 `=`；**实现微调**：值含通配符回退等号而非拍板文字的转义——sqlglot escape 不渲染 + MySQL/PG 字符串字面量方言坑）。B1 单测 11/11 + 冒烟 26/26。
+- **统一归档**：三问题已记入《v201的改造问题发现与分析处理.md》问题 14/15/16（含待办 #15）。
+- **E1 闭环（2026-10-28 二次复测）**：卡片均显示正常、结果正确、图表正常——**E1 ✔️ 通过，问题 14/15/16 全部关闭**。
+- **E2 关闭（2026-10-28）**：对比题回退 reason 显示正确、SQL 走 LLM 生成、结果正常——**E2 ✔️ 通过**。
+- **E3 实测（2026-10-28，enforce 临时开）**：SQL 添加规则项（禁字段 `游客数量`）→ 问数被正确阻断，页面提示含违规明细与「DSL 编译轨 + METRIC_RULE_ENFORCE」标注；DSL 卡正常；执行/图表卡不产生=阻断必然（`SingleMessageError` @ llm.py:1771 中断）。附带定性：3-A 校验步骤按 Phase 3 既有设计不产执行详情卡（`check_metric_rule_violations` 仅写告警日志）——是否新增待拍板。**待办：LLM 轨对照（仍告警）+ enforce 回 False。**
 
 ### 待办（按序）
 

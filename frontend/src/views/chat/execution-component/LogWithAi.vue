@@ -52,15 +52,17 @@ const recordsBeforeCurrentQuestion = computed(() =>
       {{ error }}
     </template>
     <div class="item-list flex-gap-fallback flex-col">
-      <div class="inner-title">{{ t('chat.log_system') }}</div>
-      <div class="inner-item flex-gap-fallback flex-col">
-        <div class="inner-item-title">
-          {{ systemRecord.type }}
+      <template v-if="systemRecord">
+        <div class="inner-title">{{ t('chat.log_system') }}</div>
+        <div class="inner-item flex-gap-fallback flex-col">
+          <div class="inner-item-title">
+            {{ systemRecord.type }}
+          </div>
+          <div class="inner-item-description">
+            <SQLComponent :sql="systemRecord.content" />
+          </div>
         </div>
-        <div class="inner-item-description">
-          <SQLComponent :sql="systemRecord.content" />
-        </div>
-      </div>
+      </template>
       <template v-if="recordsBeforeCurrentQuestion.length > 0">
         <div class="inner-title">{{ t('chat.log_history') }}</div>
         <div class="inner-item flex-gap-fallback flex-col">

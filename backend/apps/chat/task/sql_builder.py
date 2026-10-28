@@ -14,6 +14,7 @@
 ④ enforce 代码完整实现、走查临时开实测；
 ⑤ aggregation 仲裁以 metric_definition 固化口径为准 + op17 记差异（G3）。
 """
+import re
 from typing import Any
 
 import orjson
@@ -143,6 +144,34 @@ def _lit(v: Any) -> exp.Literal:
     return exp.Literal.string(str(v))
 
 
+_DATE_RE = re.compile(r'\d{4}[-/]?\d{1,2}[-/]?\d{1,2}([ T]\d{1,2}:\d{2}(:\d{2})?(\.\d+)?)?')
+
+
+def _is_text_like_value(v: Any) -> bool:
+    """B1（2026-10-27 拍板）：eq 该否编译为 LIKE 包含匹配的判定。
+
+    数字 / 日期时间形态 / 布尔 → False（保持等号）；
+    值内含 LIKE 通配符（% _ \\）→ False（回退精确等号，避免通配失控；
+    escape 子句在 MySQL/PG 存在字符串字面量方言差异，故用回退实现同一目的）；
+    其余文本 → True。
+    """
+    if v is None or isinstance(v, bool):
+        return False
+    s = str(v)
+    if not s.strip():
+        return False
+    if any(c in s for c in ('%', '_', '\\')):
+        return False
+    try:
+        float(s)
+        return False
+    except ValueError:
+        pass
+    if _DATE_RE.fullmatch(s.strip()):
+        return False
+    return True
+
+
 def _filter_condition(item: Any, column: str) -> exp.Condition | None:
     """单个 FilterItem → sqlglot 条件；值/operator 不合法 → None（调用方回退）。"""
     op = _normalize_operator(item.operator)
@@ -174,6 +203,10 @@ def _filter_condition(item: Any, column: str) -> exp.Condition | None:
     # 标量比较族
     if item.value is None or isinstance(item.value, (list, tuple)):
         return None
+    # B1（2026-10-27 拍板）：文本维度等值 → LIKE '%值%'（对齐 LLM 轨口径，吸收
+    # plan 字面量与库存值的措辞差，如 '黑龙江' → '黑龙江省'）；数值/日期保持等号
+    if op == 'eq' and _is_text_like_value(item.value):
+        return exp.Like(this=col, expression=exp.Literal.string(f'%{str(item.value)}%'))
     rhs = _lit(item.value)
     return {'eq': exp.EQ, 'ne': exp.NEQ, 'gt': exp.GT, 'lt': exp.LT,
             'ge': exp.GTE, 'le': exp.LTE}[op](this=col, expression=rhs)

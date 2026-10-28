@@ -1674,6 +1674,31 @@ class LLMService:
             if dsl_answer is not None:
                 # 编译轨：LLM 生成整段跳过；SSE 契约与原轨一致（一次 sql-result + 一次 info）
                 full_sql_text = dsl_answer
+                # ========= 【改造标记 DSL-COMPILE】↓ 方案A（E1 首测修复 2026-10-27）：补齐 generate_sql 的日志/落库副作用（check_sql/check_save_sql 依赖 current_logs[GENERATE_SQL]；下游零改动） =========
+                # 卡片显示修复 A1（2026-10-27）：ai content 用编译 SQL 本身（answer JSON 供 check_sql，两者独立）
+                try:
+                    _dsl_payload = orjson.loads(dsl_answer)
+                    _dsl_sql = _dsl_payload.get('sql') if _dsl_payload.get('success') else None
+                except Exception:  # noqa: BLE001
+                    _dsl_sql = None
+                _dsl_messages = [
+                    {'type': 'human', 'content': self.chat_question.question},
+                    {'type': 'ai', 'content': _dsl_sql or dsl_answer},
+                ]
+                self.current_logs[OperationEnum.GENERATE_SQL] = start_log(
+                    session=_session,
+                    ai_modal_id=self.chat_question.ai_modal_id,
+                    ai_modal_name=self.chat_question.ai_modal_name,
+                    operate=OperationEnum.GENERATE_SQL,
+                    record_id=self.record.id,
+                    full_message=_dsl_messages)
+                self.current_logs[OperationEnum.GENERATE_SQL] = end_log(
+                    session=_session,
+                    log=self.current_logs[OperationEnum.GENERATE_SQL],
+                    full_message=_dsl_messages, reasoning_content='', token_usage={})
+                self.record = save_sql_answer(session=_session, record_id=self.record.id,
+                                              answer=orjson.dumps({'content': dsl_answer}).decode())
+                # ========= 【改造标记 DSL-COMPILE】↑ 方案A 补齐结束 =========
                 if in_chat:
                     yield 'data:' + orjson.dumps(
                         {'content': dsl_answer, 'reasoning_content': '',
