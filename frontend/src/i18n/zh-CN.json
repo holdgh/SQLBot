@@ -867,7 +867,8 @@
       "LLM_CONTEXT_FILTER": "大模型上下文过滤",
       "FILTER_METRICS": "匹配指标",
       "QUERY_PLAN": "解析查询计划",
-      "DSL_COMPILE": "DSL 编译分流"
+      "DSL_COMPILE": "DSL 编译分流",
+      "CHECK_METRIC_RULE": "口径校验"
     },
     "plan": {
       "failed": "计划解析失败（不影响主流程）",
@@ -928,6 +929,16 @@
         "self_check": "编译自检未通过（表越权或解析失败）",
         "internal_error": "编译器内部错误（已自动回退）"
       }
+    },
+    "trust": {
+      "status": "校验结果",
+      "status_skipped": "未校验（无指标命中）",
+      "status_passed": "通过",
+      "status_violations": "违规",
+      "violation_list": "违规明细",
+      "rule_type": "规则类型",
+      "metric_name": "指标",
+      "detail": "说明"
     },
     "log_system": "对话模板",
     "log_question": "本次提问",

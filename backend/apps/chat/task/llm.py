@@ -1760,11 +1760,39 @@ class LLMService:
                 )
 
             # ========= 【改造标记 TRUST-VALIDATE】↓ 3-A 口径校验（告警旁路，G2/G4 不阻断） =========
+            _trust_candidates = getattr(self, '_metric_candidates', None)
             violations = check_metric_rule_violations(session=_session, sql=sql,
-                                                      metric_candidates=getattr(self, '_metric_candidates', None),
+                                                      metric_candidates=_trust_candidates,
                                                       ds_id=self.ds.id, ds_type=self.ds.type,
                                                       record_id=self.record.id)
             # ========= 【改造标记 TRUST-VALIDATE】↑ 3-A 口径校验插桩结束 =========
+            # ========= 【改造标记 TRUST-VALIDATE】↓ 3-A 执行详情校验卡（2026-10-28 拍板：每题都记，未校验/通过/违规三态；写卡失败绝不影响主流程） =========
+            try:
+                if not _trust_candidates:
+                    _trust_status = 'skipped'
+                elif violations:
+                    _trust_status = 'violations'
+                else:
+                    _trust_status = 'passed'
+                _trust_payload = {
+                    'status': _trust_status,
+                    'violations': [{'kind': v.get('kind'), 'rule_type': v.get('rule_type'),
+                                    'metric_name': v.get('metric_name'), 'detail': v.get('detail')}
+                                   for v in violations],
+                }
+                _trust_messages = [{'type': 'ai',
+                                    'content': orjson.dumps(_trust_payload).decode()}]
+                self.current_logs[OperationEnum.CHECK_METRIC_RULE] = start_log(
+                    session=_session, ai_modal_id=self.chat_question.ai_modal_id,
+                    ai_modal_name=self.chat_question.ai_modal_name,
+                    operate=OperationEnum.CHECK_METRIC_RULE, record_id=self.record.id,
+                    full_message=_trust_messages)
+                self.current_logs[OperationEnum.CHECK_METRIC_RULE] = end_log(
+                    session=_session, log=self.current_logs[OperationEnum.CHECK_METRIC_RULE],
+                    full_message=_trust_messages, reasoning_content='', token_usage={})
+            except Exception:  # noqa: BLE001
+                SQLBotLogUtil.error('[TRUST-VALIDATE] write check log failed', exc_info=True)
+            # ========= 【改造标记 TRUST-VALIDATE】↑ 3-A 校验卡写入结束 =========
             # ========= 【改造标记 DSL-COMPILE】↓ 3-A 阻断消费（拍板④：violations 非空 ∧ enforce 开 ∧ DSL 编译轨 → 阻断；LLM 轨道保持告警不变） =========
             if violations and settings.METRIC_RULE_ENFORCE and getattr(self, '_dsl_compiled', False):
                 details = '；'.join(str(v.get('detail') or v.get('type') or v) for v in violations)

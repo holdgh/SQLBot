@@ -59,6 +59,9 @@ class OperationEnum(Enum):
     # ========= 【改造标记 DSL-COMPILE】↓ Phase 5 分流/编译日志（operate 列无 CHECK 约束，无需 DDL 迁移） =========
     DSL_COMPILE = '17'
     # ========= 【改造标记 DSL-COMPILE】↑ 枚举新增结束 =========
+    # ========= 【改造标记 TRUST-VALIDATE】↓ 3-A 口径校验执行详情卡（operate 列无 CHECK 约束，无需 DDL 迁移；2026-10-28 拍板新增） =========
+    CHECK_METRIC_RULE = '18'
+    # ========= 【改造标记 TRUST-VALIDATE】↑ 枚举新增结束 =========
 
 
 class ChatFinishStep(Enum):

@@ -867,7 +867,8 @@
       "LLM_CONTEXT_FILTER": "LLM Context Filter",
       "FILTER_METRICS": "Match Metrics",
       "QUERY_PLAN": "Query Plan Parsing",
-      "DSL_COMPILE": "DSL Compile Routing"
+      "DSL_COMPILE": "DSL Compile Routing",
+      "CHECK_METRIC_RULE": "Metric Rule Check"
     },
     "plan": {
       "failed": "Plan parsing failed (main flow unaffected)",
@@ -928,6 +929,16 @@
         "self_check": "Compile self-check failed (unauthorized table or parse failure)",
         "internal_error": "Compiler internal error (auto fallback)"
       }
+    },
+    "trust": {
+      "status": "Check Result",
+      "status_skipped": "Not checked (no metric matched)",
+      "status_passed": "Passed",
+      "status_violations": "Violations",
+      "violation_list": "Violation Details",
+      "rule_type": "Rule Type",
+      "metric_name": "Metric",
+      "detail": "Detail"
     },
     "log_system": "Conversation Template",
     "log_question": "Current Question",

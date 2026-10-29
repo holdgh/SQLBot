@@ -867,7 +867,8 @@
       "LLM_CONTEXT_FILTER": "大模型上下文過濾",
       "FILTER_METRICS": "匹配指標",
       "QUERY_PLAN": "解析查詢計畫",
-      "DSL_COMPILE": "DSL 編譯分流"
+      "DSL_COMPILE": "DSL 編譯分流",
+      "CHECK_METRIC_RULE": "口徑校驗"
     },
     "plan": {
       "failed": "計畫解析失敗（不影響主流程）",
@@ -928,6 +929,16 @@
         "self_check": "編譯自檢未通過（表越權或解析失敗）",
         "internal_error": "編譯器內部錯誤（已自動回退）"
       }
+    },
+    "trust": {
+      "status": "校驗結果",
+      "status_skipped": "未校驗（無指標命中）",
+      "status_passed": "通過",
+      "status_violations": "違規",
+      "violation_list": "違規明細",
+      "rule_type": "規則類型",
+      "metric_name": "指標",
+      "detail": "說明"
     },
     "log_system": "對話範本",
     "log_question": "本次提問",

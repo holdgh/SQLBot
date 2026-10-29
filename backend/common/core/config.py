@@ -171,7 +171,7 @@ class Settings(BaseSettings):
     # ========= 【改造标记 QUERY-PLAN】↑ Query Plan 配置结束 =========
 
     # ========= 【改造标记 DSL-COMPILE】↓ Phase 5 SQL Builder 配置 =========
-    DSL_COMPILE_ENABLED: bool = True  # 默认 False=零开销早退、不记 op17；需 QUERY_PLAN_ENABLED 同开
+    DSL_COMPILE_ENABLED: bool = False  # 默认 False=零开销早退、不记 op17；需 QUERY_PLAN_ENABLED 同开
     # ========= 【改造标记 DSL-COMPILE】↑ 配置结束 =========
 
     @field_validator('SQL_DEBUG',

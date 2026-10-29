@@ -867,7 +867,8 @@
       "LLM_CONTEXT_FILTER": "LLM 컨텍스트 필터",
       "FILTER_METRICS": "지표 매칭",
       "QUERY_PLAN": "쿼리 플랜 분석",
-      "DSL_COMPILE": "DSL 컴파일 분기"
+      "DSL_COMPILE": "DSL 컴파일 분기",
+      "CHECK_METRIC_RULE": "지표 규칙 검증"
     },
     "plan": {
       "failed": "플랜 분석 실패(메인 흐름에 영향 없음)",
@@ -928,6 +929,16 @@
         "self_check": "컴파일 자체 점검 실패(테이블 권한 초과 또는 파싱 실패)",
         "internal_error": "컴파일러 내부 오류(자동 폴백)"
       }
+    },
+    "trust": {
+      "status": "검증 결과",
+      "status_skipped": "검사 안 됨(지표 미일치)",
+      "status_passed": "통과",
+      "status_violations": "위반",
+      "violation_list": "위반 세부사항",
+      "rule_type": "규칙 유형",
+      "metric_name": "지표",
+      "detail": "설명"
     },
     "log_system": "대화 템플릿",
     "log_question": "현재 질문",
