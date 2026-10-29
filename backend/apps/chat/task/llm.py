@@ -81,6 +81,7 @@ from common.utils.metric_validator import check_metric_rule_violations
 from common.utils.result_validator import validate_query_result
 # ========= 【改造标记 TRUST-VALIDATE】↑ 导入结束 =========
 # ========= 【改造标记 QUERY-PLAN】↓ Query Plan 语义解析层薄插桩导入（G1：llm.py 只加调用，实现落独立模块） =========
+from apps.chat.task.calc_engine import compute as calc_compute
 from apps.chat.task.query_plan import build_query_plan, is_low_confidence
 # ========= 【改造标记 QUERY-PLAN】↑ 导入结束 =========
 # ========= 【改造标记 DSL-COMPILE】↓ Phase 5 SQL Builder 薄插桩导入（G1：llm.py 只加调用，实现落独立模块） =========
@@ -1801,6 +1802,9 @@ class LLMService:
                 )
             # ========= 【改造标记 DSL-COMPILE】↑ 阻断消费结束 =========
 
+            # ========= 【改造标记 CALC-ENGINE】↓ 行权限/dynamic guard 初始化（Phase 6 前期子查询回退依据，拍板③-3） =========
+            self._row_guard = False
+            # ========= 【改造标记 CALC-ENGINE】↑ guard 初始化 =========
             if ((not self.current_assistant or is_page_embedded) and is_normal_user(
                     self.current_user)) or use_dynamic_ds:
                 sql_result = None
@@ -1809,8 +1813,14 @@ class LLMService:
                     dynamic_sql_result = self.generate_assistant_dynamic_sql(_session, sql, tables)
                     sqlbot_temp_sql_text = dynamic_sql_result.get(
                         'sqlbot_temp_sql_text') if dynamic_sql_result else None
+                    # ========= 【改造标记 CALC-ENGINE】↓ dynamic 改写生效 → 前期子查询回退 =========
+                    self._row_guard = bool(dynamic_sql_result and sqlbot_temp_sql_text)
+                    # ========= 【改造标记 CALC-ENGINE】↑ =========
                 else:
                     sql_result = self.generate_filter(_session, sql, tables)  # maybe no sql and tables
+                    # ========= 【改造标记 CALC-ENGINE】↓ 行权限改写生效（非空=SQL 被注入权限条件）→ 前期子查询回退 =========
+                    self._row_guard = bool(sql_result)
+                    # ========= 【改造标记 CALC-ENGINE】↑ =========
 
                 if sql_result:
                     SQLBotLogUtil.info(sql_result)
@@ -1867,6 +1877,13 @@ class LLMService:
                                   metric_candidates=getattr(self, '_metric_candidates', None),
                                   sql=real_execute_sql, record_id=self.record.id)
             # ========= 【改造标记 TRUST-VALIDATE】↑ 3-B 结果校验插桩结束 =========
+
+            # ========= 【改造标记 CALC-ENGINE】↓ Phase 6 计算引擎插桩（3-B 后、DataFormat/save 前；开关关/无 plan/非支持 calculation → 零行为零日志） =========
+            try:
+                calc_compute(self, _session, result)
+            except Exception:  # noqa: BLE001
+                SQLBotLogUtil.error('[CALC-ENGINE] plug-in failed, keep current data', exc_info=True)
+            # ========= 【改造标记 CALC-ENGINE】↑ 插桩结束 =========
 
             _data = DataFormat.convert_large_numbers_in_object_array(result.get('data'))
             _data = DataFormat.normalize_qualified_sql_column_keys_in_object_array(_data)

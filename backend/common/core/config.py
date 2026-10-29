@@ -174,6 +174,10 @@ class Settings(BaseSettings):
     DSL_COMPILE_ENABLED: bool = False  # 默认 False=零开销早退、不记 op17；需 QUERY_PLAN_ENABLED 同开
     # ========= 【改造标记 DSL-COMPILE】↑ 配置结束 =========
 
+    # ========= 【改造标记 CALC-ENGINE】↓ Phase 6 计算引擎配置 =========
+    CALC_ENGINE_ENABLED: bool = False  # 默认 False=零开销早退、不记 op19；需 QUERY_PLAN_ENABLED 同开（v1.2 既有声明）
+    # ========= 【改造标记 CALC-ENGINE】↑ 配置结束 =========
+
     @field_validator('SQL_DEBUG',
                      'EMBEDDING_ENABLED',
                      'KEYWORD_RETRIEVAL_ENABLED',

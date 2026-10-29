@@ -868,7 +868,8 @@
       "FILTER_METRICS": "匹配指标",
       "QUERY_PLAN": "解析查询计划",
       "DSL_COMPILE": "DSL 编译分流",
-      "CHECK_METRIC_RULE": "口径校验"
+      "CHECK_METRIC_RULE": "口径校验",
+      "CALC_ENGINE": "计算引擎"
     },
     "plan": {
       "failed": "计划解析失败（不影响主流程）",
@@ -939,6 +940,34 @@
       "rule_type": "规则类型",
       "metric_name": "指标",
       "detail": "说明"
+    },
+    "calc": {
+      "status": "计算状态",
+      "status_computed": "已计算",
+      "status_skipped": "未计算（按当期单期返回）",
+      "reason_label": "回退原因",
+      "type": "计算类型",
+      "window_current": "当期窗口",
+      "window_previous": "对比期窗口",
+      "sql_previous": "对比期子查询",
+      "row_count": "结果行数",
+      "values": "计算明细",
+      "v_current": "当期",
+      "v_previous": "对比期",
+      "v_change": "变化值",
+      "v_rate": "变化率",
+      "total": "合计",
+      "truncated": "仅展示前 {0} 行",
+      "div_zero": "对比期为 0，变化率不适用",
+      "reason": {
+        "row_permission": "行权限场景（本期回退，防权限遗漏）",
+        "no_previous": "缺少对比期时间窗",
+        "unsupported_calc": "该计算类型不在本期支持范围（占比/排名走 LLM 轨道）",
+        "scope": "查询类型不在本期支持范围（明细/趋势/排名回退）",
+        "multi_metric": "多指标计算暂不支持（本期单指标）",
+        "dialect": "数据源方言不在首期白名单（mysql/postgresql）",
+        "internal_error": "计算引擎内部错误（已保留当期数据）"
+      }
     },
     "log_system": "对话模板",
     "log_question": "本次提问",

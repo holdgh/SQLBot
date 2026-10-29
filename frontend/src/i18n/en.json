@@ -868,7 +868,8 @@
       "FILTER_METRICS": "Match Metrics",
       "QUERY_PLAN": "Query Plan Parsing",
       "DSL_COMPILE": "DSL Compile Routing",
-      "CHECK_METRIC_RULE": "Metric Rule Check"
+      "CHECK_METRIC_RULE": "Metric Rule Check",
+      "CALC_ENGINE": "Calculation Engine"
     },
     "plan": {
       "failed": "Plan parsing failed (main flow unaffected)",
@@ -939,6 +940,34 @@
       "rule_type": "Rule Type",
       "metric_name": "Metric",
       "detail": "Detail"
+    },
+    "calc": {
+      "status": "Calculation Status",
+      "status_computed": "Computed",
+      "status_skipped": "Not computed (current period returned as-is)",
+      "reason_label": "Fallback Reason",
+      "type": "Calculation Type",
+      "window_current": "Current Window",
+      "window_previous": "Previous Window",
+      "sql_previous": "Previous Sub-query",
+      "row_count": "Result Rows",
+      "values": "Calculation Details",
+      "v_current": "Current",
+      "v_previous": "Previous",
+      "v_change": "Change",
+      "v_rate": "Change Rate",
+      "total": "Total",
+      "truncated": "only first {0} rows shown",
+      "div_zero": "previous period is 0, rate N/A",
+      "reason": {
+        "row_permission": "Row-level permission scenario (fallback this phase)",
+        "no_previous": "Previous period window missing",
+        "unsupported_calc": "Calculation type not supported this phase (share/rank stays on LLM path)",
+        "scope": "Query type not supported this phase (detail/trend/rank fallback)",
+        "multi_metric": "Multi-metric calculation not supported this phase (single metric only)",
+        "dialect": "Datasource dialect not in first-phase whitelist (mysql/postgresql)",
+        "internal_error": "Calculation engine internal error (current data kept)"
+      }
     },
     "log_system": "Conversation Template",
     "log_question": "Current Question",

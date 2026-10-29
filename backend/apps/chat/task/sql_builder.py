@@ -26,7 +26,7 @@ from sqlglot import exp
 
 from apps.chat.curd.chat import end_log, start_log
 from apps.chat.models.chat_model import OperationEnum
-from apps.chat.schemas.query_plan import QueryPlan
+from apps.chat.schemas.query_plan import QueryPlan, TimeWindow
 from apps.db.db import get_sqlglot_dialect
 from apps.metric.models.metric_model import (
     Dimension,
@@ -263,8 +263,12 @@ def _relation_enabled(session: Session, metric_id: Any, dimension_id: Any) -> bo
 
 
 def _compile(plan: QueryPlan, service, session: Session, metrics: list,
-             dim_index: dict[str, Any]) -> tuple[str, dict]:
-    """解析 + sqlglot AST 组装（禁字符串拼接）。返回 (sql, meta)；不满足 → raise _Fallback(reason)。"""
+             dim_index: dict[str, Any], time_window: TimeWindow | None = None) -> tuple[str, dict]:
+    """解析 + sqlglot AST 组装（禁字符串拼接）。返回 (sql, meta)；不满足 → raise _Fallback(reason)。
+
+    time_window（Phase 6 计算引擎复用）：None=用 plan.time_range.current（Phase 5 主入口原行为）；
+    非 None=用指定窗组装同构子查询（前期窗），其余逻辑逐字一致。
+    """
     # ---- 指标解析（G3 仲裁：固化口径优先，plan aggregation 差异记 meta 不回退） ----
     agg_mismatch: list[dict] = []
     resolved: list[dict] = []
@@ -308,11 +312,15 @@ def _compile(plan: QueryPlan, service, session: Session, metrics: list,
     # ---- 时间与过滤条件 ----
     if not metric0.time_field:
         raise _Fallback('no_time_field')
+    if time_window is None:
+        if plan.time_range is None:
+            raise _Fallback('no_time_range')
+        time_window = plan.time_range.current
     conditions: list[exp.Condition] = [
         exp.GTE(this=exp.column(metric0.time_field),
-                expression=_lit(plan.time_range.current.start)),
+                expression=_lit(time_window.start)),
         exp.LTE(this=exp.column(metric0.time_field),
-                expression=_lit(plan.time_range.current.end)),
+                expression=_lit(time_window.end)),
     ]
     for item in plan.filters:
         column = _resolve_filter_column(item.field, table, session, dim_index)
@@ -337,8 +345,8 @@ def _compile(plan: QueryPlan, service, session: Session, metrics: list,
     select = select.where(*conditions)
     if plan.query_type == 'trend':
         select = select.group_by(exp.column(MONTH_ALIAS)).order_by(exp.column(MONTH_ALIAS))
-    elif plan.query_type == 'aggregate' and dim_cols:
-        # detail 是裸列明细，不聚合不分组
+    elif plan.query_type in ('aggregate', 'compare') and dim_cols:
+        # detail 是裸列明细，不聚合不分组；compare（Phase 6 前期子查询复用）与 aggregate 同构分组
         select = select.group_by(*[exp.column(c) for c in dim_cols])
     if getattr(service, 'enable_sql_row_limit', False):
         select = select.limit(ROW_LIMIT)

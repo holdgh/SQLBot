@@ -868,7 +868,8 @@
       "FILTER_METRICS": "匹配指標",
       "QUERY_PLAN": "解析查詢計畫",
       "DSL_COMPILE": "DSL 編譯分流",
-      "CHECK_METRIC_RULE": "口徑校驗"
+      "CHECK_METRIC_RULE": "口徑校驗",
+      "CALC_ENGINE": "計算引擎"
     },
     "plan": {
       "failed": "計畫解析失敗（不影響主流程）",
@@ -939,6 +940,34 @@
       "rule_type": "規則類型",
       "metric_name": "指標",
       "detail": "說明"
+    },
+    "calc": {
+      "status": "計算狀態",
+      "status_computed": "已計算",
+      "status_skipped": "未計算（按當期單期返回）",
+      "reason_label": "回退原因",
+      "type": "計算類型",
+      "window_current": "當期窗口",
+      "window_previous": "對比期窗口",
+      "sql_previous": "對比期子查詢",
+      "row_count": "結果行數",
+      "values": "計算明細",
+      "v_current": "當期",
+      "v_previous": "對比期",
+      "v_change": "變化值",
+      "v_rate": "變化率",
+      "total": "合計",
+      "truncated": "僅展示前 {0} 行",
+      "div_zero": "對比期為 0，變化率不適用",
+      "reason": {
+        "row_permission": "行權限場景（本期回退，防權限遺漏）",
+        "no_previous": "缺少對比期時間窗",
+        "unsupported_calc": "該計算類型不在本期支持範圍（佔比/排名走 LLM 軌道）",
+        "scope": "查詢類型不在本期支持範圍（明細/趨勢/排名回退）",
+        "multi_metric": "多指標計算暫不支持（本期單指標）",
+        "dialect": "數據源方言不在首期白名單（mysql/postgresql）",
+        "internal_error": "計算引擎內部錯誤（已保留當期數據）"
+      }
     },
     "log_system": "對話範本",
     "log_question": "本次提問",
