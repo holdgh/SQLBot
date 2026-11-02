@@ -38,6 +38,11 @@ from common.utils.utils import SQLBotLogUtil
 
 # 拍板①：首期可编译 query_type；calculation 必须 none（compare/rank/share/yoy/qoq 属 Phase 6 或无结构字段）
 COMPILED_QUERY_TYPES = {'aggregate', 'detail', 'trend'}
+# 问题17 方案C（2026-10-29 拍板）：计算题并入编译轨接管——calculation∈此集 ∧ query_type∈此集时
+# 编译「当期窗」SQL（合成 answer，LLM 不生成主 SQL），前期补算与公式合并由 calc_engine 负责；
+# 单一真源由 calc_engine.SUPPORTED_CALC_TYPES 引用（反向 import 会成环，故常量定义于此）。
+CALC_COMPILE_TYPES = {'yoy', 'qoq', 'growth'}
+CALC_COMPILE_QUERY_TYPES = {'aggregate', 'compare'}
 # 拍板②：首期方言白名单（按 ds.type 原值，doris/starrocks 等即使 sqlglot 族内也回退）
 DIALECT_WHITELIST = {'mysql', 'postgresql'}
 MONTH_ALIAS = '月份'
@@ -233,14 +238,22 @@ def _chart_type(query_type: str, has_dims: bool) -> str:
 
 
 def _resolve_scope(plan: QueryPlan) -> str | None:
-    """拍板① 范围判定（纯结构，不碰库）。返回 None=通过，否则 reason 码。"""
+    """拍板① 范围判定（纯结构，不碰库）。返回 None=通过，否则 reason 码。
+
+    问题17 方案C（2026-10-29）：calculation∈CALC_COMPILE_TYPES 的计算题，
+    query_type∈CALC_COMPILE_QUERY_TYPES 时纳入编译（仅编译当期窗）；
+    其余 calculation（share/rank 等）与结构不满足维持原回退。
+    """
+    calc_mode = plan.calculation.type in CALC_COMPILE_TYPES  # 问题17 方案C
     if plan.query_type not in COMPILED_QUERY_TYPES:
-        return 'scope'
-    if plan.calculation.type != 'none':
+        if not (calc_mode and plan.query_type in CALC_COMPILE_QUERY_TYPES):
+            return 'scope'
+    if plan.calculation.type != 'none' and not calc_mode:
         return 'scope'
     if plan.time_range is None:
         return 'no_time_range'
-    if plan.time_range.previous is not None:
+    if plan.time_range.previous is not None and not calc_mode:
+        # 计算题（calc_mode）自带 previous 窗是预期（前期由 calc_engine 补算），不回退
         return 'scope'
     if plan.query_type == 'detail' and not plan.dimensions:
         return 'scope'
@@ -377,7 +390,11 @@ def compile_plan_to_answer(service, _session: Session,
     service: llm service 实例（读 ds/table_name_list/enable_sql_row_limit/record）；
     调用方 llm.py 仅一行调用（G1）。副作用：service._dsl_compiled / service._dsl_meta。
     """
-    if not settings.DSL_COMPILE_ENABLED:
+    # 问题17 方案C：计算题的编译放行由 CALC_ENGINE_ENABLED 独立控制（不要求 DSL_COMPILE_ENABLED 同开）；
+    # 因此 calc 题即使 Phase 5 开关关也会产生 op17（触发来源=计算引擎接管，诊断需要）。
+    if not settings.DSL_COMPILE_ENABLED and not (
+            settings.CALC_ENGINE_ENABLED and plan is not None
+            and plan.calculation.type in CALC_COMPILE_TYPES):
         return None
 
     service._dsl_compiled = False

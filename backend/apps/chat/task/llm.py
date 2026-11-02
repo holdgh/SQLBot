@@ -81,7 +81,7 @@ from common.utils.metric_validator import check_metric_rule_violations
 from common.utils.result_validator import validate_query_result
 # ========= 【改造标记 TRUST-VALIDATE】↑ 导入结束 =========
 # ========= 【改造标记 QUERY-PLAN】↓ Query Plan 语义解析层薄插桩导入（G1：llm.py 只加调用，实现落独立模块） =========
-from apps.chat.task.calc_engine import compute as calc_compute
+from apps.chat.task.calc_engine import build_rule_chart, compute as calc_compute
 from apps.chat.task.query_plan import build_query_plan, is_low_confidence
 # ========= 【改造标记 QUERY-PLAN】↑ 导入结束 =========
 # ========= 【改造标记 DSL-COMPILE】↓ Phase 5 SQL Builder 薄插桩导入（G1：llm.py 只加调用，实现落独立模块） =========
@@ -1930,16 +1930,50 @@ class LLMService:
                 question=self.chat_question.question,
                 embedding=False, table_list=tables)
             SQLBotLogUtil.info('used_tables_schema: \n' + used_tables_schema)
-            chart_res = self.generate_chart(_session, chart_type, used_tables_schema)
-            full_chart_text = ''
-            for chunk in chart_res:
-                full_chart_text += chunk.get('content')
+            # ========= 【改造标记 CALC-ENGINE】↓ 方案D（问题18 拍板 2026-10-30）：计算引擎接管成功 → 规则 table 配置跳过 LLM 图表生成（列=合并数据 keys，防当期 SQL 语义错配） =========
+            if getattr(self, '_calc_computed', False):
+                _calc_meta_d = getattr(self, '_dsl_meta', None) or {}
+                _rule_chart = build_rule_chart(
+                    list(result.get('data') or []),
+                    _calc_meta_d.get('dimensions') or [],
+                    _calc_meta_d.get('metric') or '',
+                    self.chat_question.question or '')
+                full_chart_text = orjson.dumps(_rule_chart, default=str).decode()
+                _rule_msgs = [
+                    {'type': 'human', 'content': self.chat_question.question or ''},
+                    {'type': 'ai', 'content': full_chart_text},
+                ]
+                self.current_logs[OperationEnum.GENERATE_CHART] = start_log(
+                    session=_session,
+                    ai_modal_id=self.chat_question.ai_modal_id,
+                    ai_modal_name=self.chat_question.ai_modal_name,
+                    operate=OperationEnum.GENERATE_CHART,
+                    record_id=self.record.id, full_message=_rule_msgs)
+                self.record = save_chart_answer(session=_session, record_id=self.record.id,
+                                                answer=orjson.dumps({'content': full_chart_text}).decode())
+                self.current_logs[OperationEnum.GENERATE_CHART] = end_log(
+                    session=_session, log=self.current_logs[OperationEnum.GENERATE_CHART],
+                    full_message=_rule_msgs,
+                    reasoning_content='[rule-chart] deterministic table from calc engine (方案D)',
+                    token_usage={})
                 if in_chat:
                     yield 'data:' + orjson.dumps(
-                        {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
+                        {'content': full_chart_text, 'reasoning_content': '',
                          'type': 'chart-result'}).decode() + '\n\n'
-            if in_chat:
-                yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'chart generated'}).decode() + '\n\n'
+                if in_chat:
+                    yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'chart generated'}).decode() + '\n\n'
+            # ========= 【改造标记 CALC-ENGINE】↑ 方案D 分支结束 =========
+            else:
+                chart_res = self.generate_chart(_session, chart_type, used_tables_schema)
+                full_chart_text = ''
+                for chunk in chart_res:
+                    full_chart_text += chunk.get('content')
+                    if in_chat:
+                        yield 'data:' + orjson.dumps(
+                            {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
+                             'type': 'chart-result'}).decode() + '\n\n'
+                if in_chat:
+                    yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'chart generated'}).decode() + '\n\n'
 
             # filter chart
             SQLBotLogUtil.info(full_chart_text)

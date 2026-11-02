@@ -966,7 +966,8 @@
         "scope": "Query type not supported this phase (detail/trend/rank fallback)",
         "multi_metric": "Multi-metric calculation not supported this phase (single metric only)",
         "dialect": "Datasource dialect not in first-phase whitelist (mysql/postgresql)",
-        "internal_error": "Calculation engine internal error (current data kept)"
+        "internal_error": "Calculation engine internal error (current data kept)",
+        "contract_mismatch": "Current data contract mismatch (LLM track already computed the result; engine skipped)"
       }
     },
     "log_system": "Conversation Template",

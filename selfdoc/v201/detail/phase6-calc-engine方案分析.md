@@ -1,6 +1,6 @@
 # Phase 6 计算引擎（Post-Query Calculation Engine）方案分析
 
-> 创建：2026-10-28（启动日，Phase 5 验收闭环后启动）｜状态：**✅ 拍板通过（2026-10-28，①~⑤ 全按建议）→ Step 1~6 实施完成（2026-10-29），待走查 F1~F5（验收编号沿字母序，E1~E5 已被 Phase 5 占用，2026-10-29 与进展文档统一）**
+> 创建：2026-10-28（启动日，Phase 5 验收闭环后启动）｜状态：**✅ 拍板通过（2026-10-28，①~⑤ 全按建议）→ Step 1~6 实施完成（2026-10-29）→ 问题 17 方案 C（拍板 10-29/实施 10-30）、问题 18 方案 D（拍板并实施 11-02）→ ✅ F1 重测通过（2026-11-02，问题 17/18 关闭；多样性损失挂起=问题 18 演进项）→ F2 ✅ 关闭（11-02 两轮实测：空结果 2018vs2017 确定性 null 不报错 ✓、单边 2021vs2020 当期 273506 正常 ✓；字面 `null` 显示=问题 19 Table.ts 守卫修复，页面复测显示 `-` 正常），F3~F5 待走查（验收编号沿字母序，E1~E5 已被 Phase 5 占用）**
 > 实施中追加拍板：**列结构 A**（2026-10-29，拍板④歧义澄清）——`<指标名>` 列列头即指标名、值=当期值，另设 同期值/变化值/变化率 三列，无冗余「指标」名字串列。
 > 权威规格：`v201改造方案_v1.2.md` 第四节 Phase 6 章节（L217-228）与第九节步骤 18（L366）。
 > 配套文档：进展文档（新增第六节日）、detail/phase4-query-plan方案分析.md（plan 结构来源）、detail/phase5-sql-builder方案分析.md（解析组件来源）。
@@ -48,6 +48,10 @@ if CALC_ENGINE_ENABLED ∧ plan ∧ plan.calculation.type ∈ 支持集:
 
 **关键取舍（对应拍板点①）**：主 SQL 的生成路径**本期一行不改**（与 Phase 4 硬边界同款"不改 SQL 生成路径"）；Phase 5 编译范围**不动**（calculation 继续回退 LLM 轨）。Phase 6 是**结果侧增量**，不是第三条 SQL 轨道。
 
+> ⚠️ **修正（问题 17，方案 C：拍板 2026-10-29、实施 2026-10-30，替代上述取舍的两项前提）**：F1 首测证明「主 SQL 照旧」下 LLM 轨对计算题生成的是**答案型 SQL**（单条 CASE WHEN 两期聚合+同比率），「主 SQL=当期数据（列=指标名）」契约不成立——引擎取当期 null 且整体替换破坏 LLM 已算好的结果（详见《v201的改造问题发现与分析处理.md》问题 17）。修正为：**计算题（yoy/qoq/growth × aggregate/compare）由编译轨供给当期窗 SQL**（复用 Phase 5 `_compile`，合成 answer 注入既有链路，LLM 不生成主 SQL；`compile_plan_to_answer` gate = `DSL_COMPILE_ENABLED` ∨（`CALC_ENGINE_ENABLED` ∧ 计算题）），calc_engine 只负责补前期窗+公式合并；**LLM 轨回退直答场景由契约检测兜底**（主 data 无指标列 → `contract_mismatch` 跳过不接管，LLM 答案原样返回）。Phase 5 原 scope 中 calculation=none 的全部行为、提示词、开关独立性零改动（`CALC_ENGINE_ENABLED=False` → LLM 原生直答同比，全链现状）。
+>
+> ⚠️ **再修正（问题 18，方案 D：拍板并实施 2026-11-02）**：F1 重测计算侧通过，但**结果页仍显示当期总量**——`generate_chart`（LLM）按当期单值 SQL 生成列引用，合并 4 列白给（同族契约分叉，发生在图表配置生成环节，详见问题 18）。修正为：**`_calc_computed` 置位（计算引擎接管成功）→ 跳过 LLM 图表生成，`build_rule_chart` 规则构造确定性 table 配置**（列=合并数据首行 keys，复用 `check_save_chart` 落库与 lower 契约，合成 GENERATE_CHART 卡），前端零改动；回退场景与开关关走原 LLM 图表环节。**取舍：calc 题失去图表多样性（固定 table），用户知悉拍板暂行、记为挂起演进项（问题 18「取舍记录」）。**
+
 **公式与子查询拓扑（确定性）**：
 
 | calculation.type | 子查询拓扑 | Python 公式 |
@@ -61,6 +65,7 @@ if CALC_ENGINE_ENABLED ∧ plan ∧ plan.calculation.type ∈ 支持集:
 
 - **建议**：主 SQL 照旧 LLM 轨执行，calc_engine 只做「补前期查询 + Python 合并」，插桩在 3-B 之后。理由：a) 贴规格字面（Post-Query、挂接 execute_sql 附近、契约完全不变）；b) 主链改动最小（单点插桩）；c) 不动 Phase 5 边界，两 Phase 职责清晰。
 - 备选形态 2：calculation 题在分流点整体接管（N 子查询自执行自落库）——侵入 check_save_sql/EXECUTE_SQL/权限/3-B 全链对齐，复杂度高，不建议本期。
+- **修正（问题 17，方案 C 拍板 2026-10-29）**：F1 首测证伪「主 SQL 照旧」前提（LLM 答案型 SQL 契约失配，见上文 §3 修正注）；形态 1 与形态 2 的折中落地——**当期数据由编译轨供给（形态 2 的确定性）+ 既有链路零改（形态 1 的最小侵入）**：计算题进 `compile_plan_to_answer`（合成 answer 注入，check_sql/白名单/3-A/权限/执行/图表全走 Phase 5 已验证件），calc_engine 仍仅 3-B 后单点插桩补前期+合并；LLM 轨回退直答由 `contract_mismatch` 契约检测兜底不接管。原建议「一行不改 SQL 生成路径」的字面保留于 **calculation=none 题**（其路径确实零改动），计算题的 LLM 生成路径改为「被分流跳过」而非「被修改」。
 
 ### ② 本期 calculation 范围：yoy/qoq/growth 做，share/rank 回退（建议 ✅）
 
@@ -113,8 +118,8 @@ if CALC_ENGINE_ENABLED ∧ plan ∧ plan.calculation.type ∈ 支持集:
 
 ## 7. 验收（对应 v1.2 Phase 6 验收行）
 
-- **F1**：问「同比增长多少」→ calc 卡含过程、结果与人工核算一致、`change_rate` 小数正确、图表正常；
-- **F2**：除零（基期 0）与空结果（前期无数据）确定性 null，不报错；
+- **F1**：问「同比增长多少」→ calc 卡含过程、结果与人工核算一致、`change_rate` 小数正确、图表正常；**✅ 已通过（2026-11-02，历经问题 17→方案 C、问题 18→方案 D 两修后重测通过）**
+- **F2**：除零（基期 0）与空结果（前期无数据）确定性 null，不报错；（2026-11-02 实测「2018年…同比」：当期 2018 与前期 2017 **均无数据**——库内年份仅 2021~2026，`SUM` 空集返回 1 行 NULL → 合并 1 行全 null、行数 1、**不报错，空结果场景符合验收标准**）。**（11-02 补测收口：① 用户确认页面显示字面 `null` → 定位 `charts/Table.ts` S2 formatter `String(null)` → 记问题 19，两处空值守卫返回 `-` 同日实施 + build 过）；② 「2021年…同比」单边实测通过——当期 273506 正常、对比期/变化/变化率 `-`、不报错、行数 1。**F2 计算侧通过**）→ **✅ F2 关闭（2026-11-02，问题 19 页面复测显示 `-` 正常）**
 - **F3**：开关关 → 与现状逐字零差异（A3 式对照）；无 plan 题永不触发；
 - **F4**：share/rank/行权限/previous 缺失 → 回退 reason 正确、单期结果照常；
 - **F5**：四语言 calc 卡显示正常。
@@ -123,4 +128,4 @@ if CALC_ENGINE_ENABLED ∧ plan ∧ plan.calculation.type ∈ 支持集:
 
 1. ~~**用户拍板 ①~⑤**~~ ✅（2026-10-28 全按建议；追加列结构 A 拍板 2026-10-29）；
 2. ~~分步实施（Step 1 开关/枚举 → Step 2 sql_builder 抽函数 → Step 3 calc_engine → Step 4 llm.py 插桩 → Step 5 前端四件套 → Step 6 冒烟/文档）~~ ✅（2026-10-29 完成：smoke_p6 **27/27**、smoke_p5 回归 **26/26**、ruff 新改文件全过、前端 build 过、i18n 四语言 JSON 校验过；真实数据 cur=798526/prev=585270 公式与 SQL 真值交叉一致）；
-3. 走查 F1~F5（需临时开 `CALC_ENGINE_ENABLED=True` 问同比题）→ 进展文档第九节回填闭环。
+3. 走查 F1~F5（需临时开 `CALC_ENGINE_ENABLED=True` 问同比题；F1 先行重测——问题 17 方案 C 已修复，F2~F5 顺次）→ 进展文档第九节回填闭环。

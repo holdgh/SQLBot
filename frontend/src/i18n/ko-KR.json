@@ -966,7 +966,8 @@
         "scope": "이번 단계 미지원 쿼리 유형(상세/트렌드/순위 폴백)",
         "multi_metric": "다지표 계산 미지원(이번 단계 단일 지표)",
         "dialect": "데이터 소스 방언이 1차 화이트리스트 아님(mysql/postgresql)",
-        "internal_error": "계산 엔진 내부 오류(당기 데이터 유지)"
+        "internal_error": "계산 엔진 내부 오류(당기 데이터 유지)",
+        "contract_mismatch": "당기 데이터 계약 불일치(LLM 트랙이 이미 산출, 엔진 미개입)"
       }
     },
     "log_system": "대화 템플릿",

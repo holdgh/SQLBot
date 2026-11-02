@@ -966,7 +966,8 @@
         "scope": "查询类型不在本期支持范围（明细/趋势/排名回退）",
         "multi_metric": "多指标计算暂不支持（本期单指标）",
         "dialect": "数据源方言不在首期白名单（mysql/postgresql）",
-        "internal_error": "计算引擎内部错误（已保留当期数据）"
+        "internal_error": "计算引擎内部错误（已保留当期数据）",
+        "contract_mismatch": "当期数据与生成 SQL 口径不一致（LLM 轨道已直接算出结果，引擎不接管）"
       }
     },
     "log_system": "对话模板",

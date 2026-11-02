@@ -123,6 +123,9 @@ export class Table extends BaseChart {
             field: a.value,
             name: a.name,
             formatter: (value: any) => {
+              if (value === null || value === undefined || value === '') {
+                return '-'
+              }
               const formatted = a.formatNumber ? formatNumber(value) : value
               return String(formatted)
             },
@@ -205,7 +208,11 @@ export class Table extends BaseChart {
             const formattedValue = includes(this.formatNumberFields, meta.valueField)
               ? formatNumber(meta.fieldValue)
               : meta.fieldValue
-            const text = document.createTextNode(String(formattedValue))
+            const text = document.createTextNode(
+              formattedValue === null || formattedValue === undefined || formattedValue === ''
+                ? '-'
+                : String(formattedValue)
+            )
             container.appendChild(text)
 
             return container

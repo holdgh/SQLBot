@@ -3,11 +3,14 @@
 权威规格：v201改造方案_v1.2.md Phase 6 章节（第四节 L217-228、第九节步骤 18）；
 方案分析 selfdoc/v201/detail/phase6-calc-engine方案分析.md（2026-10-28 拍板 ①~⑤ 全按建议）。
 
-形态 1「真 Post-Query」（拍板①）：主 SQL 照旧 LLM 轨执行，本模块只做
-「补前期窗子查询 + Python 公式合并」；插桩在 llm.py 3-B 之后、DataFormat/save 之前。
+形态（拍板①，经问题17 方案C 修正 2026-10-29）：主 SQL 优先由「编译轨」供给当期窗数据
+（calculation∈CALC_COMPILE_TYPES 的计算题经 sql_builder 编译成当期 SQL，LLM 不生成主 SQL），
+本模块只做「补前期窗子查询 + Python 公式合并」；插桩在 llm.py 3-B 之后、DataFormat/save 之前。
+LLM 轨（编译范围外回退直答）主 data 无指标列 → contract_mismatch 跳过不接管（防破坏答案型 SQL）。
 范围（拍板②）：calculation ∈ {yoy, qoq, growth} × query_type ∈ {aggregate, compare}
 + 单指标 + 单表 atomic（复用 Phase 5 _compile，仅换时间窗）；share/rank/detail/trend 回退。
-回退不计算（拍板③，G2 三场景）：row_permission（行权限/dynamic 改写）/ no_previous / 组装失败
+回退不计算（拍板③，G2 四场景）：contract_mismatch（LLM 答案型 SQL，2026-10-29 增）/
+row_permission（行权限/dynamic 改写）/ no_previous / 组装失败
 ——一律记 op19 卡 reason、当期数据照常返回、绝不阻断。
 合并行结构（拍板④+列结构 A）：{维度…, <指标名>=当期值, 同期值, 变化值, 变化率}；
 按维度 key full-join（当期先行序）；变化率=(当期-基期)/基期，基期 0 → None（div_zero）。
@@ -24,6 +27,7 @@ from apps.chat.curd.chat import end_log, start_log
 from apps.chat.models.chat_model import OperationEnum
 from apps.chat.schemas.query_plan import QueryPlan
 from apps.chat.task.sql_builder import (
+    CALC_COMPILE_TYPES,
     DIALECT_WHITELIST,
     _compile,
     _Fallback,
@@ -34,7 +38,8 @@ from common.core.config import settings
 from common.utils.utils import SQLBotLogUtil
 
 # 拍板②：本期支持的 calculation 与 query_type（其余/结构不满足 → 回退 reason）
-SUPPORTED_CALC_TYPES = {'yoy', 'qoq', 'growth'}
+# 问题17 方案C：与 sql_builder.CALC_COMPILE_TYPES 单一同源（反向 import 成环，常量定义于 sql_builder）
+SUPPORTED_CALC_TYPES = CALC_COMPILE_TYPES
 SUPPORTED_QUERY_TYPES = {'aggregate', 'compare'}
 # 合并输出列（拍板④：变化率=小数；任一期缺失/null → 该行对应列 None）
 COL_PREV = '同期值'
@@ -116,13 +121,31 @@ def _merge(cur_rows: list[dict], prev_rows: list[dict], meta: dict) -> tuple[lis
     return merged, values
 
 
+def build_rule_chart(rows: list[dict], dimensions: list[str], metric: str, title: str) -> dict:
+    """方案D（问题18 拍板 2026-10-30）：计算引擎接管成功 → 确定性 table 图表配置（跳过 LLM 图表生成）。
+
+    列 = 合并数据首行 keys（= 维度… + <指标名>/同期值/变化值/变化率，顺序与拍板④一致）；
+    数据为空时以 dimensions+metric 兜底同列集。问题 17/18 根因：LLM 图表环节按
+    「当期单值 SQL」生成列引用，合并数据 4 列白给——方案 D 以规则配置精确指列。
+    """
+    if rows:
+        cols = [str(c) for c in rows[0].keys()]
+    else:
+        cols = [str(c) for c in list(dimensions) + [metric, COL_PREV, COL_CHANGE, COL_RATE] if c]
+    return {'type': 'table', 'title': title or '',
+            'columns': [{'name': c, 'value': c} for c in cols]}
+
+
 def compute(service, _session: Session, result: dict) -> bool:
     """主插桩入口（llm.py 3-B 后单点调用，整包兜底绝不影响主流程 G2）。
 
     计算成功 → 就地替换 result['data'] 并返回 True；任何回退 → 数据不动返回 False。
     卡记账规则：开关关 / 无 plan / calculation=none → 不记卡（零打扰）；
     calculation≠none（含 share/rank 回退）→ 必记一条 op19（拍板⑤）。
+    方案D（2026-10-30）：成功置 service._calc_computed=True（llm.py 图表段规则接管依据）；
+    函数首行统一置 False，防服务实例复用残留。
     """
+    service._calc_computed = False  # 方案D：每题重置（开关关/早退路径同样干净）
     if not settings.CALC_ENGINE_ENABLED:
         return False
     plan: QueryPlan | None = getattr(service, 'query_plan', None)
@@ -131,7 +154,8 @@ def compute(service, _session: Session, result: dict) -> bool:
 
     calc_type = plan.calculation.type
     meta: dict[str, Any] = {'type': calc_type, 'query_type': plan.query_type,
-                            'computed': False, 'reason': ''}
+                            'computed': False, 'reason': '',
+                            'compiled_takeover': bool(getattr(service, '_dsl_compiled', False))}
     if plan.time_range is not None:
         meta['window_current'] = vars(plan.time_range.current) if plan.time_range.current else None
         if plan.time_range.previous is not None:
@@ -139,12 +163,13 @@ def compute(service, _session: Session, result: dict) -> bool:
     log = start_log(session=_session, operate=OperationEnum.CALC_ENGINE,
                     record_id=service.record.id, local_operation=True)
     try:
-        reason = _resolve_skip(service, plan)
+        reason = _resolve_skip(service, plan, result)
         if reason is None:
             reason = _execute_and_merge(service, _session, plan, result, meta)
         meta['reason'] = reason or ''
         if not reason:
             meta['computed'] = True
+            service._calc_computed = True  # 方案D：llm.py 图表段规则接管触发
             return True
     except _Fallback as e:
         meta['reason'] = e.reason
@@ -158,8 +183,24 @@ def compute(service, _session: Session, result: dict) -> bool:
     return False
 
 
-def _resolve_skip(service, plan: QueryPlan) -> str | None:
-    """拍板③ 回退判定（纯结构 + guard，不碰库）。返回 None=可计算，否则 reason 码。"""
+def _has_metric_col(rows: list[dict], metric_name: str) -> bool:
+    """当期数据契约检测（问题17 方案C 兜底）：首行 key 是否含指标列（兼容 qualified key）。"""
+    if not rows:
+        return True  # 空结果无破坏风险，放行走既有合并语义（前期独有行当期 null）
+    return _cell(rows[0], metric_name) is not None
+
+
+def _resolve_skip(service, plan: QueryPlan, result: dict) -> str | None:
+    """拍板③ 回退判定（纯结构 + guard，不碰库）。返回 None=可计算，否则 reason 码。
+
+    问题17 方案C（2026-10-29）：当期数据契约判定前置——
+    编译接管（_dsl_compiled）下主 SQL 为当期窗数据（列=指标名），正常接管；
+    LLM 轨（未编译接管，如编译范围外回退直答）主 SQL 可能是「答案型 SQL」，
+    若主 data 不含指标列 → 引擎不接管（防整体替换破坏 LLM 已算好的结果）。
+    """
+    if not getattr(service, '_dsl_compiled', False):
+        if not _has_metric_col(list(result.get('data') or []), plan.metrics[0].metric_name):
+            return 'contract_mismatch'
     if getattr(service, '_row_guard', False):
         # 行权限/dynamic 改写生效：前期子查询若不完整施加权限存在泄露风险（首期回退）
         return 'row_permission'
