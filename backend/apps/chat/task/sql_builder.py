@@ -243,7 +243,14 @@ def _resolve_scope(plan: QueryPlan) -> str | None:
     问题17 方案C（2026-10-29）：calculation∈CALC_COMPILE_TYPES 的计算题，
     query_type∈CALC_COMPILE_QUERY_TYPES 时纳入编译（仅编译当期窗）；
     其余 calculation（share/rank 等）与结构不满足维持原回退。
+    问题20 方案A（2026-11-02）：计算题仅在 CALC_ENGINE_ENABLED 开时进编译轨
+    （方案C「计算题编译放行由 CALC_ENGINE_ENABLED 独立控制」的原意；此前
+    DSL_COMPILE_ENABLED 开关独立放行全部题型致 calc 关时计算题误入编译轨、
+    无人接管出单期结果）——calc 关 → 回 scope（Phase 5 基线同 reason 码，
+    op17 记 llm_fallback scope，LLM 轨出答案型 SQL）。
     """
+    if plan.calculation.type in CALC_COMPILE_TYPES and not settings.CALC_ENGINE_ENABLED:
+        return 'scope'  # 问题20 方案A：calc 开关关，计算题回退 LLM 轨（Phase 5 基线）
     calc_mode = plan.calculation.type in CALC_COMPILE_TYPES  # 问题17 方案C
     if plan.query_type not in COMPILED_QUERY_TYPES:
         if not (calc_mode and plan.query_type in CALC_COMPILE_QUERY_TYPES):

@@ -193,28 +193,34 @@ def _has_metric_col(rows: list[dict], metric_name: str) -> bool:
 def _resolve_skip(service, plan: QueryPlan, result: dict) -> str | None:
     """拍板③ 回退判定（纯结构 + guard，不碰库）。返回 None=可计算，否则 reason 码。
 
-    问题17 方案C（2026-10-29）：当期数据契约判定前置——
+    问题17 方案C（2026-10-29）：当期数据契约判定——
     编译接管（_dsl_compiled）下主 SQL 为当期窗数据（列=指标名），正常接管；
     LLM 轨（未编译接管，如编译范围外回退直答）主 SQL 可能是「答案型 SQL」，
     若主 data 不含指标列 → 引擎不接管（防整体替换破坏 LLM 已算好的结果）。
+    问题21 方案A（2026-11-03）：reason 优先级修正——① 契约检测移至**末位**
+    （其余门全过才做契约判定）；② 类型门 `unsupported_calc` 提至**最前**
+    （rank/share 类型不支持是主因，且其 plan 常 previous=None，须先于
+    `no_previous` 命中）。最终序：类型→结构→多指标→窗→方言→权限→契约。
+    此前契约前置会遮蔽主因（rank/share LLM 轨误报 contract_mismatch，见问题 21）。
     """
-    if not getattr(service, '_dsl_compiled', False):
-        if not _has_metric_col(list(result.get('data') or []), plan.metrics[0].metric_name):
-            return 'contract_mismatch'
-    if getattr(service, '_row_guard', False):
-        # 行权限/dynamic 改写生效：前期子查询若不完整施加权限存在泄露风险（首期回退）
-        return 'row_permission'
-    if plan.time_range is None or plan.time_range.previous is None:
-        return 'no_previous'
     if plan.calculation.type not in SUPPORTED_CALC_TYPES:
         return 'unsupported_calc'
     if plan.query_type not in SUPPORTED_QUERY_TYPES:
         return 'scope'
     if len(plan.metrics) != 1:
         return 'multi_metric'
+    if plan.time_range is None or plan.time_range.previous is None:
+        return 'no_previous'
     ds_type = (service.ds.type or '').lower()
     if ds_type not in DIALECT_WHITELIST:
         return 'dialect'
+    if getattr(service, '_row_guard', False):
+        # 行权限/dynamic 改写生效：前期子查询若不完整施加权限存在泄露风险（首期回退）
+        return 'row_permission'
+    # 契约门（问题21 方案A：末位）——支持类型且结构全过，仅数据契约不符时兜底
+    if not getattr(service, '_dsl_compiled', False):
+        if not _has_metric_col(list(result.get('data') or []), plan.metrics[0].metric_name):
+            return 'contract_mismatch'
     return None
 
 
