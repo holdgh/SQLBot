@@ -2,8 +2,8 @@
 
 > 创建：2026-10-28（启动日，Phase 5 验收闭环后启动）｜状态：**✅ 拍板通过（2026-10-28，①~⑤ 全按建议）→ Step 1~6 实施完成（2026-10-29）→ 问题 17 方案 C（拍板 10-29/实施 10-30）、问题 18 方案 D（拍板并实施 11-02）、问题 19 Table.ts 空值守卫（11-02）、问题 20 方案 A scope 守卫（拍板并实施 11-03，行为矩阵固化 v1.2 第六节）→ ✅ F1 重测通过（2026-11-02，问题 17/18 关闭；多样性损失挂起=问题 18 演进项）→ F2 ✅ 关闭（11-02 两轮实测：空结果 2018vs2017 确定性 null 不报错 ✓、单边 2021vs2020 当期 273506 正常 ✓；字面 `null` 显示=问题 19 Table.ts 守卫修复，页面复测显示 `-` 正常）** → **F3 ✅ 通过（11-03：calc 关重问同比题 → op17 卡「LLM 生成轨（回退）/scope 原因」、结果正常=Phase 5 基线，经问题 20 方案 A 修复后复测）** → **F5 ✅ 通过（11-03：四语言执行详情显示正常）** → **F4 ✅ 通过（11-03：rank/share reason=`unsupported_calc`、行权限 reason=`row_permission` 三实测过且结果正常；no_previous 子项拍板降级冒烟 U8/C6d 收口；问题 21 方案 A=reason 优先级类型门最前+契约门末位，冒烟 51/51）—— F1~F5 全过，Phase 6 验收闭环（2026-11-03）**（验收编号沿字母序，E1~E5 已被 Phase 5 占用）
 > 实施中追加拍板：**列结构 A**（2026-10-29，拍板④歧义澄清）——`<指标名>` 列列头即指标名、值=当期值，另设 同期值/变化值/变化率 三列，无冗余「指标」名字串列。
-> 权威规格：`v201改造方案_v1.2.md` 第四节 Phase 6 章节（L217-228）与第九节步骤 18（L366）。
-> 配套文档：进展文档（新增第六节日）、detail/phase4-query-plan方案分析.md（plan 结构来源）、detail/phase5-sql-builder方案分析.md（解析组件来源）。
+> 权威规格：`v201改造方案_v1.2.md` 第四节 Phase 6 章节（L217-228）与第九节步骤 18（L380）。
+> 配套文档：进展文档第九节（Phase 6）、detail/phase4-query-plan方案分析.md（plan 结构来源）、detail/phase5-sql-builder方案分析.md（解析组件来源）。
 
 ## 1. 权威规格解读（v1.2 原文要点）
 
@@ -20,11 +20,11 @@
 | 事实 | 位置 |
 | ---- | ---- |
 | `QueryPlan.calculation = {type: none/yoy/qoq/share/growth/rank, expr?}`、`time_range.previous` 可空、`sub_queries: list[QueryPlan]`（与自身同构）已预留 | `query_plan.py:57-62,32-36,121` |
-| **LLM 实际恒输出 `sub_queries: []`**，执行布局明确留 Phase 6 再设计 | phase4 方案文档 L60/L123 |
+| **LLM 实际恒输出 `sub_queries: []`**，执行布局明确留 Phase 6 再设计 | phase4 方案文档 L43（schema 预留表） |
 | calculation≠none 在 Phase 5 恒回退 LLM 轨（scope reason），Phase 5 不接手 | `sql_builder.py` `COMPILED_QUERY_TYPES` 与 scope 判定 |
 | 执行链：check_sql → 白名单 → 3-A → 行权限 filter → check_save_sql → SSE `sql` → **`execute_sql`（EXECUTE_SQL 卡）→ 3-B → DataFormat 规整 → `save_sql_data` → SSE `sql-data` → 图表链（generate_chart LLM 选图）** | `llm.py:1745-1886` |
 | 行权限：normal user 且有权限规则时 `generate_filter`（LLM 调用）改写 SQL；normal user 无规则/普通用户直通 | `llm.py:1806-1813` |
-| 环话题实测（E3 对照）：plan 正常产出 calculation=qoq + time_range.current/previous，主 SQL 由 LLM 生成当期数据 | 走查记录（问题文档 16 附近） |
+| 环话题实测（E3 对照）：plan 正常产出 calculation=qoq + time_range.current/previous，主 SQL 由 LLM 生成当期数据 | phase5 方案文档第 11 节（E3 LLM 轨对照）/ 进展文档 8.4 |
 
 ## 3. 总体方案（形态 1：真 Post-Query，主链零改 SQL 生成）
 
@@ -119,7 +119,7 @@ if CALC_ENGINE_ENABLED ∧ plan ∧ plan.calculation.type ∈ 支持集:
 ## 7. 验收（对应 v1.2 Phase 6 验收行）
 
 - **F1**：问「同比增长多少」→ calc 卡含过程、结果与人工核算一致、`change_rate` 小数正确、图表正常；**✅ 已通过（2026-11-02，历经问题 17→方案 C、问题 18→方案 D 两修后重测通过）**
-- **F2**：除零（基期 0）与空结果（前期无数据）确定性 null，不报错；（2026-11-02 实测「2018年…同比」：当期 2018 与前期 2017 **均无数据**——库内年份仅 2021~2026，`SUM` 空集返回 1 行 NULL → 合并 1 行全 null、行数 1、**不报错，空结果场景符合验收标准**）。**（11-02 补测收口：① 用户确认页面显示字面 `null` → 定位 `charts/Table.ts` S2 formatter `String(null)` → 记问题 19，两处空值守卫返回 `-` 同日实施 + build 过）；② 「2021年…同比」单边实测通过——当期 273506 正常、对比期/变化/变化率 `-`、不报错、行数 1。**F2 计算侧通过**）→ **✅ F2 关闭（2026-11-02，问题 19 页面复测显示 `-` 正常）**
+- **F2**：除零（基期 0）与空结果（前期无数据）确定性 null，不报错；（2026-11-02 实测「2018年…同比」：当期 2018 与前期 2017 **均无数据**——库内年份仅 2021~2026，`SUM` 空集返回 1 行 NULL → 合并 1 行全 null、行数 1、**不报错，空结果场景符合验收标准**）。**（11-02 补测收口：① 用户确认页面显示字面 `null` → 定位 `charts/Table.ts` S2 formatter `String(null)` → 记问题 19，两处空值守卫返回 `-` 同日实施 + build 过）；② 「2021年…同比」单边实测通过——当期 273506 正常、对比期/变化/变化率 `-`、不报错、行数 1。F2 计算侧通过）** → **✅ F2 关闭（2026-11-02，问题 19 页面复测显示 `-` 正常）**
 - **F3**：开关关 → 与现状逐字零差异（A3 式对照）；无 plan 题永不触发；（**✅ 已通过 2026-11-03**：calc 关问「2021年上海接待美国游客数量同比增长多少」→ dsl 卡「LLM 生成轨（回退）/超出首期编译范围（对比/排名/占比/多表等，走 LLM 轨道）」、无 op19、结果正常；过程中暴露**问题 20**（gate 漏洞：DSL 开独立放行致 calc 关计算题误入编译轨出单期结果）→ **方案 A** `_resolve_scope` 守卫修复 + 行为矩阵固化 v1.2 第六节，冒烟 47/47 + 回归 26/26）
 - **F4**：share/rank/行权限/previous 缺失 → 回退 reason 正确、单期结果照常（**✅ 已通过 11-03：rank/share reason=`unsupported_calc`、行权限 reason=`row_permission` 三实测过；行权限实测=受限用户问英国→主 SQL 查无数据→结果页 `-` 符合权限预期；no_previous 子项 11-03 拍板降级冒烟 U8/C6d 收口——自然问数难构造 plan 缺窗**）；
 - **F5**：四语言 calc 卡显示正常（**✅ 已通过 2026-11-03**）。
