@@ -237,6 +237,21 @@ def _chart_type(query_type: str, has_dims: bool) -> str:
     return 'bar' if has_dims else 'table'
 
 
+def _normalize_plan_semantics(plan: QueryPlan) -> None:
+    """问题24 方案B（2026-11-11 拍板）：detail+聚合指标矛盾组合以聚合语义归一化（就地改写）。
+
+    决策树：矛盾组合（query_type=detail ∧ 任一 metric ref 自报 aggregation）
+    → query_type=aggregate；此后有维度列走 aggregate+GROUP BY、无维度列走
+    纯聚合 SUM 不加 GROUP BY。限定 calculation=none（calc 题的 detail 误标属
+    calc 轨 scope 面=问题 20 领地，不在此改）。置于 _resolve_scope 之前：
+    detail 门（detail∧无维度→scope）只继续拦真明细（ref 无聚合自报）。
+    """
+    if (plan.query_type == 'detail'
+            and plan.calculation.type == 'none'
+            and any(ref.aggregation for ref in plan.metrics)):
+        plan.query_type = 'aggregate'
+
+
 def _resolve_scope(plan: QueryPlan) -> str | None:
     """拍板① 范围判定（纯结构，不碰库）。返回 None=通过，否则 reason 码。
 
@@ -365,8 +380,10 @@ def _compile(plan: QueryPlan, service, session: Session, metrics: list,
     select = select.where(*conditions)
     if plan.query_type == 'trend':
         select = select.group_by(exp.column(MONTH_ALIAS)).order_by(exp.column(MONTH_ALIAS))
-    elif plan.query_type in ('aggregate', 'compare') and dim_cols:
-        # detail 是裸列明细，不聚合不分组；compare（Phase 6 前期子查询复用）与 aggregate 同构分组
+    elif dim_cols:
+        # 问题24 方案B 底线（2026-11-11）：L358 对指标无条件聚合，凡 SELECT 含维度列
+        # 必须 GROUP BY——出门 SQL 结构合法的无条件兜底（未被归一化的 detail 如
+        # ref.aggregation 空也兜住）；compare（Phase 6 前期子查询复用）与 aggregate 同构分组。
         select = select.group_by(*[exp.column(c) for c in dim_cols])
     if getattr(service, 'enable_sql_row_limit', False):
         select = select.limit(ROW_LIMIT)
@@ -409,6 +426,8 @@ def compile_plan_to_answer(service, _session: Session,
     log = start_log(session=_session, operate=OperationEnum.DSL_COMPILE,
                     record_id=service.record.id, local_operation=True)
     try:
+        if plan is not None:
+            _normalize_plan_semantics(plan)  # 问题24 方案B：scope 判定前归一化矛盾组合
         reason = _resolve_scope(plan) if plan is not None else 'no_plan'
         if reason is None:
             ds_type = (service.ds.type or '').lower()

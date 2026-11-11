@@ -64,8 +64,8 @@ def get_or_create_eval_chat(session, oid=1, datasource_id=1) -> int:
     if row:
         return int(row)
     session.execute(sa_text(
-        "insert into chat (oid, brief, chat_type, datasource, engine_type, origin) "
-        "values (:oid, 'phase0-eval', 'chat', :ds, 'mysql', 0)"),
+        "insert into chat (oid, brief, chat_type, datasource, engine_type, origin, create_by, create_time) "
+        "values (:oid, 'phase0-eval', 'chat', :ds, 'mysql', 0, (select min(id) from sys_user), now())"),
         {'oid': oid, 'ds': datasource_id})
     session.commit()
     return int(session.execute(sa_text("select max(id) from chat")).scalar())
