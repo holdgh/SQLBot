@@ -35,6 +35,8 @@ QUERY_PLAN_SYSTEM_PROMPT = """你是查询理解器：把用户问题解析为 Q
 - ambiguity: {need_clarification: true|false, reason: 需澄清时必填非空，否则空串}
 
 歧义触发规则（need_clarification=true）：问题用词可指多个业务对象；时间范围无法从问题确定；参考指标有多个且语义接近无法判断用户要哪个。
+
+【术语与业务规则强约束】输入若含 [术语]、[自定义提示词] 段：它们为优先信息，作用于 plan 所有相关字段，优先于你的常识推断——指标/维度名对齐术语规范称谓；集合词与业务概念按术语定义在 filters 展开为具体值；时间术语按定义展开 time_range；口径与计算语义落到 aggregation/calculation。自定义提示词中的业务规则（季度换算、当月累加、口径特例）必须反映到 time_range/calculation/filters。
 今天日期：{today}（用于推算时间窗起止）。"""
 
 
@@ -93,14 +95,23 @@ def build_query_plan(service, _session) -> QueryPlan | None:
         # 候选剥 recall_score 后进提示词（信号分由后端计算，不需 LLM 可见）
         metrics_payload = [{k: v for k, v in m.items() if k != 'recall_score'}
                            for m in metric_candidates]
+        # 上下文筛选产物（术语/自定义提示词，filter_* 已在 plan 前回写；空则不拼块）
+        terminologies = (getattr(service.chat_question, 'terminologies', None) or '').strip()
+        custom_prompt = (getattr(service.chat_question, 'custom_prompt', None) or '').strip()
+        ctx_parts = [
+            f'用户问题：{question}',
+            f'参考指标候选（可选用，也允许依据问题补充）：'
+            f'{orjson.dumps(metrics_payload).decode()}',
+        ]
+        if terminologies:
+            ctx_parts.append(f'[术语]\n{terminologies}')
+        if custom_prompt:
+            ctx_parts.append(f'[自定义提示词]\n{custom_prompt}')
         messages = [
             # 用 replace 而非 format：提示词含字面 JSON 示例大括号（{metric_name: ...} 等），format 会当格式化字段报 KeyError
             SystemPromptMessage(content=QUERY_PLAN_SYSTEM_PROMPT.replace(
                 '{today}', date.today().isoformat())),
-            HumanPromptMessage(content=(
-                f'用户问题：{question}\n'
-                f'参考指标候选（可选用，也允许依据问题补充）：'
-                f'{orjson.dumps(metrics_payload).decode()}')),
+            HumanPromptMessage(content='\n'.join(ctx_parts)),
         ]
         full_text, reasoning = _collect_stream(service.llm.stream(messages), token_usage)
 

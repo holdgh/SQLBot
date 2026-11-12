@@ -28,6 +28,7 @@ from apps.chat.models.chat_model import (  # noqa: E402
 )
 from apps.chat.task.llm import LLMService  # noqa: E402
 from apps.system.schemas.system_schema import UserInfoDTO  # noqa: E402
+from common.core.config import settings  # noqa: E402
 from common.core.db import engine  # noqa: E402
 
 SessionLocal = sessionmaker(bind=engine, class_=Session)
@@ -59,8 +60,10 @@ def load_user(session) -> UserInfoDTO:
 
 
 def get_or_create_eval_chat(session, oid=1, datasource_id=1) -> int:
+    # 问题23 方案A（2026-11-11）：chat 按数据源隔离复用，跨源题（T043/T044 ds2）不串会话
     row = session.execute(sa_text(
-        "select id from chat where brief = 'phase0-eval' and chat_type='chat' order by id limit 1")).scalar()
+        "select id from chat where brief = 'phase0-eval' and chat_type='chat' "
+        "and datasource = :ds order by id limit 1"), {'ds': datasource_id}).scalar()
     if row:
         return int(row)
     session.execute(sa_text(
@@ -243,18 +246,28 @@ async def run_all(cases, repeat, datasource_id):
     user_session = SessionLocal()
     try:
         user = load_user(user_session)
-        chat_id = get_or_create_eval_chat(user_session, oid=user.oid, datasource_id=datasource_id)
+        # 问题23 方案A：题级 datasource 字段优先（缺省用 --datasource），按 ds 分组各建 chat
+        chat_by_ds: dict[int, int] = {}
     finally:
         user_session.close()
 
     results = []
     for case in cases:
+        case_ds = int(case.get('datasource') or datasource_id)
+        if case_ds not in chat_by_ds:
+            cs = SessionLocal()
+            try:
+                chat_by_ds[case_ds] = get_or_create_eval_chat(
+                    cs, oid=user.oid, datasource_id=case_ds)
+            finally:
+                cs.close()
+        chat_id = chat_by_ds[case_ds]
         for attempt in range(1, repeat + 1):
             s = SessionLocal()
             t0 = time.time()
             try:
                 rec_id, rerr, dur = await run_one(
-                    s, user, chat_id, case['q'], datasource_id, ChatFinishStep.QUERY_DATA)
+                    s, user, chat_id, case['q'], case_ds, ChatFinishStep.QUERY_DATA)
             except Exception as e:  # noqa: BLE001
                 rec_id, rerr, dur = None, f'create:{type(e).__name__}: {e}', time.time() - t0
             finally:
@@ -265,7 +278,7 @@ async def run_all(cases, repeat, datasource_id):
             passed, layers, notes = judge(case, ev, rerr)
             results.append({
                 'id': case['id'], 'cat': case['cat'], 'assert': case['assert'],
-                'want_track': case.get('track'), 'attempt': attempt,
+                'want_track': case.get('track'), 'attempt': attempt, 'ds': case_ds,
                 'record_id': rec_id, 'passed': passed, 'layers': layers,
                 'track': track_of(ev), 'plan_status': ev['plan_status'],
                 'route_reason': ev['route_reason'], 'conf': _conf_of(ev),
@@ -273,7 +286,7 @@ async def run_all(cases, repeat, datasource_id):
                 'sql_head': (ev['sql'] or '')[:160].replace('\n', ' '),
             })
             mark = 'PASS' if passed else 'FAIL'
-            print(f'{mark} {case["id"]} [{case["assert"]}] {case["q"][:40]} '
+            print(f'{mark} {case["id"]} [{case["assert"]}] ds{case_ds} {case["q"][:40]} '
                   f'({dur:.1f}s track={results[-1]["track"]})'
                   + (f' | {"; ".join(notes)}' if not passed and notes else ''))
     return results
@@ -312,11 +325,11 @@ def write_report(results, cases, out_path):
     for k in sorted(by_track):
         lines.append(f'| {k} | {len(by_track[k])} |')
     lines += ['', '## 明细', '',
-              '| id | 结果 | assert | 期望轨 | 实际轨 | conf | record | 耗时 | 备注 |',
-              '| --- | --- | --- | --- | --- | --- | --- | --- | --- |']
+              '| id | 结果 | ds | assert | 期望轨 | 实际轨 | conf | record | 耗时 | 备注 |',
+              '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |']
     for r in results:
         lines.append(
-            f"| {r['id']} | {'✅' if r['passed'] else '❌'} | {r['assert']} | "
+            f"| {r['id']} | {'✅' if r['passed'] else '❌'} | {r.get('ds', 1)} | {r['assert']} | "
             f"{r['want_track']} | {r['track']} | {r['conf']} | {r['record_id']} | "
             f"{r['duration']}s | {'; '.join(r['notes'])[:180]} |")
     fails = [r for r in results if not r['passed']]
@@ -335,9 +348,23 @@ def main_cli():
     ap.add_argument('--id', nargs='*', help='只跑指定题号')
     ap.add_argument('--repeat', type=int, default=1, help='每题重复次数（默认 1）')
     ap.add_argument('--datasource', type=int, default=1, help='评测数据源 id（默认 1）')
+    ap.add_argument('--force-track', choices=['llm', 'dsl'], default=None,
+                    help='Phase 7 双轨互补：llm=进程内关 DSL_COMPILE（纯 LLM 轨）；'
+                         'dsl=进程内开 DSL_COMPILE（编译轨）；不传=按开关原值')
     ap.add_argument('--dry', action='store_true', help='只列题不执行')
     ap.add_argument('--out', default=None, help='报告输出路径（默认 tests/evals/report_<ts>.md）')
     args = ap.parse_args()
+
+    if args.force_track == 'llm':
+        # 纯 LLM 轨：关 DSL_COMPILE（普通题早退回退 LLM）+ 关 CALC_ENGINE
+        # （calc 题否则走 calc 编译轨，见问题17方案C——force llm 需一并关）
+        settings.DSL_COMPILE_ENABLED = False
+        settings.CALC_ENGINE_ENABLED = False
+    elif args.force_track == 'dsl':
+        settings.DSL_COMPILE_ENABLED = True
+    if args.force_track:
+        print(f'force-track={args.force_track} DSL_COMPILE_ENABLED={settings.DSL_COMPILE_ENABLED} '
+              f'CALC_ENGINE_ENABLED={settings.CALC_ENGINE_ENABLED}')
 
     cases = load_cases(args.id)
     if not cases:
@@ -346,7 +373,7 @@ def main_cli():
     print(f'loaded {len(cases)} cases (repeat={args.repeat})')
     if args.dry:
         for c in cases:
-            print(f"{c['id']} [{c['assert']}] {c['q']}")
+            print(f"{c['id']} [{c['assert']}] ds{c.get('datasource', args.datasource)} {c['q']}")
         return 0
 
     results = asyncio.run(run_all(cases, args.repeat, args.datasource))
